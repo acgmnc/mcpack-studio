@@ -1,0 +1,12 @@
+block.stone=Stone
+block.dirt=Dirt
+block.grass=Grass Block
+block.oak_planks=Oak Planks
+block.glass=Glass
+tile.chest=Chest
+item.apple=Apple
+item.diamond_sword=Diamond Sword
+item.stick=Stick
+itemGroup.buildingBlocks=Building Blocks
+gui.done=Done
+menu.singleplayer=Singleplayer

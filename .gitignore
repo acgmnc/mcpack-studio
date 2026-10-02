@@ -1,0 +1,18 @@
+# 构建产物
+/MCPackStudio.exe
+/release/*.exe
+/release/selftest.txt
+/release/demo.txt
+
+# 调试 / 截图产物
+/shots/
+/layout.txt
+/selftest.txt
+*.png
+
+# 本地临时输出
+/rel-demo/
+/testpack-1.12/*.zip
+
+# 参考仓库（上游源码，不随本仓库分发）
+/mc-rp-editor-ref/

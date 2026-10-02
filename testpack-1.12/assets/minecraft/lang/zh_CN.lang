@@ -1,0 +1,6 @@
+block.stone=石头
+block.dirt=泥土
+block.grass=草方块
+item.apple=苹果
+item.diamond_sword=钻石剑
+gui.done=完成

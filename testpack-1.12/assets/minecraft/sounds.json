@@ -1,0 +1,11 @@
+{
+  "block.stone.break": {
+    "category": "block",
+    "sounds": [
+      {
+        "name": "dig/stone",
+        "stream": false
+      }
+    ]
+  }
+}
