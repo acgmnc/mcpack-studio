@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -95,7 +95,7 @@ namespace McPackStudio
                     g.FillRectangle(accent, 0, 0, 3, card.Height);
                 }
             };
-            host.Controls.Add(card);
+            host.Content.Controls.Add(card);
 
             var badge = new Label
             {

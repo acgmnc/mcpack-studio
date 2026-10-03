@@ -54,25 +54,11 @@ namespace McPackStudio
             if (_view != null) return _view;
 
             var host = PageKit.MakeHost();
-            var stack = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                BackColor = Theme.BgBase,
-            };
-            host.Controls.Add(stack);
-            host.Resize += (s, e) =>
-            {
-                int w = host.ClientSize.Width - host.Padding.Horizontal - 4;
-                if (w < 400) w = 400;
-                foreach (Control c in stack.Controls) c.Width = w;
-            };
+            var stack = PageKit.MakeStack(host);
 
             /* ---- 设置卡 ---- */
-            var card = new Card { Title = "批量设置", Hint = "扫描所选文件夹下的所有资源包", Height = 246, Margin = new Padding(0, 0, 0, 12) };
+            var card = new Card { Title = "批量设置", Hint = "扫描所选文件夹下的所有资源包", Height = 196, Margin = new Padding(0, 0, 0, 12) };
+            card.BodyPadding = new Padding(18, 6, 18, 8);
 
             var pick = new FlatBtn("选择文件夹…", BtnKind.Outline, 120) { Dock = DockStyle.Right };
             pick.Click += (s, e) =>
@@ -127,8 +113,8 @@ namespace McPackStudio
             row3.Controls.Add(_outBrowse);
             var lbl3 = MakeLabel("输出目录");
 
-            var sp1 = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = Color.Transparent };
-            var sp2 = new Panel { Dock = DockStyle.Top, Height = 8, BackColor = Color.Transparent };
+            var sp1 = new Panel { Dock = DockStyle.Top, Height = 3, BackColor = Color.Transparent };
+            var sp2 = new Panel { Dock = DockStyle.Top, Height = 3, BackColor = Color.Transparent };
 
             // Dock.Top 后加的在上，所以按视觉逆序添加
             card.Body.Controls.Add(row3);
@@ -142,7 +128,7 @@ namespace McPackStudio
             stack.Controls.Add(card);
 
             /* ---- 列表卡 ---- */
-            var listCard = new Card { Title = "扫描结果", Hint = "点「开始批量转换」后逐条处理", Height = 380, Margin = new Padding(0, 0, 0, 12) };
+            var listCard = new Card { Title = "扫描结果", Hint = "点「开始批量转换」后逐条处理", Height = 382, Margin = new Padding(0, 0, 0, 12) };
 
             var bar = new FlowLayoutPanel
             {
@@ -164,7 +150,7 @@ namespace McPackStudio
             _scanBtn.Click += (s, e) => DoScan();
             _runBtn.Click += (s, e) => DoRun();
 
-            var split = PageKit.MakeSplit(Orientation.Horizontal, 0.6, 90, 70);
+            var split = PageKit.MakeSplit(Orientation.Horizontal, 0.5, 96, 92);
             _list = new ToolList
             {
                 Dock = DockStyle.Fill,
@@ -442,6 +428,7 @@ namespace McPackStudio
             card.Body.Controls.Add(gap);
             card.Body.Controls.Add(bar);
 
+            /* 对照表页不需要滚动：卡片 Dock=Fill 铺满即可，所以 host 就是普通 Panel */
             host.Controls.Add(card);
             _view = host;
             Fill();
@@ -509,22 +496,7 @@ namespace McPackStudio
 
             var host = PageKit.MakeHost();
 
-            var stack = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                BackColor = Theme.BgBase,
-            };
-            host.Controls.Add(stack);
-            host.Resize += (s, e) =>
-            {
-                int w = host.ClientSize.Width - host.Padding.Horizontal - 4;
-                if (w < 400) w = 400;
-                foreach (Control c in stack.Controls) c.Width = w;
-            };
+            var stack = PageKit.MakeStack(host);
 
             /* ---- 会做的 ---- */
             const int bodyPad = 24;                 // 卡片内容左右留白
@@ -732,6 +704,8 @@ namespace McPackStudio
 
             split.Panel1.Controls.Add(top);
             split.Panel2.Controls.Add(logCard);
+
+            /* 关于页不需要滚动（上信息 + 下日志各自撑开），host 就是普通 Panel */
             host.Controls.Add(split);
 
             _view = host;
