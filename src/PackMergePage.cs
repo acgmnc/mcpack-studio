@@ -23,13 +23,13 @@ namespace McPackStudio
 
         private ToolList _sourceList;
         private ToolList _conflictList;
-        private ComboBox _strategy;
-        private ComboBox _formatCombo;
-        private ComboBox _modeCombo;
+        private FlatSelect _strategy;
+        private FlatSelect _formatCombo;
+        private FlatSelect _modeCombo;
         private TextBox _descBox;
         private TextBox _outBox;
-        private TextBox _log;
-        private ProgressBar _progress;
+        private RichTextBox _log;
+        private FancyProgress _progress;
         private Label _summary;
         private FlatBtn _planBtn, _runBtn;
 
@@ -253,16 +253,16 @@ namespace McPackStudio
                 if (dir != null) _outBox.Text = dir;
             }, out outBtn);
 
-            _modeCombo = new ComboBox { Dock = DockStyle.Left, Width = 200 };
-            Ui.StyleCombo(_modeCombo);
+            _modeCombo = new FlatSelect { Dock = DockStyle.Left, Width = 200 };
+            Ui.StyleSelect(_modeCombo);
             _modeCombo.Items.Add("输出为文件夹");
             _modeCombo.Items.Add("输出为 ZIP");
             _modeCombo.SelectedIndex = 0;
             var row2 = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = Color.Transparent };
             row2.Controls.Add(_modeCombo);
 
-            _formatCombo = new ComboBox { Dock = DockStyle.Left, Width = 380 };
-            Ui.StyleCombo(_formatCombo);
+            _formatCombo = new FlatSelect { Dock = DockStyle.Left, Width = 380 };
+            Ui.StyleSelect(_formatCombo);
             _formatCombo.Items.Add("（沿用来源的 pack_format）");
             foreach (var v in Settings.DisplayVersions().OrderByDescending(x => x.Format))
                 _formatCombo.Items.Add(new ComboItem
@@ -337,8 +337,8 @@ namespace McPackStudio
                 WrapContents = false,
                 BackColor = Color.Transparent,
             };
-            _strategy = new ComboBox { Width = 260, Margin = new Padding(0, 2, 8, 0) };
-            Ui.StyleCombo(_strategy);
+            _strategy = new FlatSelect { Width = 260, Margin = new Padding(0, 2, 8, 0) };
+            Ui.StyleSelect(_strategy);
             _strategy.Items.Add("按优先级（默认）");
             _strategy.Items.Add("全部保留最高优先级");
             _strategy.Items.Add("全部保留最低优先级");
@@ -481,7 +481,7 @@ namespace McPackStudio
             };
             _planBtn = new FlatBtn("① 预览合并", BtnKind.Normal, 116) { Margin = new Padding(0, 0, 8, 0) };
             _runBtn = new FlatBtn("② 开始合并", BtnKind.Primary, 116) { Margin = new Padding(0, 0, 8, 0), Enabled = false };
-            _progress = new ProgressBar { Height = 16, Width = 220, Margin = new Padding(8, 8, 0, 0) };
+            _progress = new FancyProgress { Height = 16, Width = 220, Margin = new Padding(8, 8, 0, 0) };
             _summary = new Label { AutoSize = true, ForeColor = Theme.FgDim, Font = Theme.F(8.5f), Margin = new Padding(12, 9, 0, 0), BackColor = Color.Transparent };
             bar.Controls.Add(_planBtn);
             bar.Controls.Add(_runBtn);

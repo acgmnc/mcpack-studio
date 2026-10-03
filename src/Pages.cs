@@ -20,11 +20,11 @@ namespace McPackStudio
 
         private Control _view;
         private TextBox _rootBox, _outBox;
-        private ComboBox _targetCombo;
+        private FlatSelect _targetCombo;
         private ToolCheck _migrateAssets;
         private ToolList _list;
-        private TextBox _log;
-        private ProgressBar _progress;
+        private RichTextBox _log;
+        private FancyProgress _progress;
         private FlatBtn _scanBtn, _runBtn, _outBrowse;
         private Label _summary;
         private bool _running;
@@ -53,7 +53,7 @@ namespace McPackStudio
         {
             if (_view != null) return _view;
 
-            var host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.BgBase, Padding = new Padding(18, 16, 18, 14), AutoScroll = true };
+            var host = PageKit.MakeHost();
             var stack = new FlowLayoutPanel
             {
                 Dock = DockStyle.Top,
@@ -91,8 +91,8 @@ namespace McPackStudio
             row1.Controls.Add(pick);
             var lbl1 = MakeLabel("资源包所在文件夹");
 
-            _targetCombo = new ComboBox { Dock = DockStyle.Left, Width = 360 };
-            Ui.StyleCombo(_targetCombo);
+            _targetCombo = new FlatSelect { Dock = DockStyle.Left, Width = 360 };
+            Ui.StyleSelect(_targetCombo);
             foreach (var v in Settings.DisplayVersions().OrderByDescending(x => x.Format))
             {
                 _targetCombo.Items.Add(new ComboItem
@@ -154,7 +154,7 @@ namespace McPackStudio
             };
             _scanBtn = new FlatBtn("① 扫描资源包", BtnKind.Normal, 116) { Margin = new Padding(0, 0, 8, 0) };
             _runBtn = new FlatBtn("② 开始批量转换", BtnKind.Primary, 132) { Margin = new Padding(0, 0, 8, 0), Enabled = false };
-            _progress = new ProgressBar { Height = 16, Width = 240, Margin = new Padding(8, 8, 0, 0) };
+            _progress = new FancyProgress { Height = 16, Width = 240, Margin = new Padding(8, 8, 0, 0) };
             _summary = new Label { AutoSize = true, ForeColor = Theme.FgDim, Font = Theme.F(8.5f), Margin = new Padding(12, 9, 0, 0), BackColor = Color.Transparent };
             bar.Controls.Add(_scanBtn);
             bar.Controls.Add(_runBtn);
@@ -507,7 +507,7 @@ namespace McPackStudio
         {
             if (_view != null) return _view;
 
-            var host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.BgBase, AutoScroll = true, Padding = new Padding(18, 16, 18, 14) };
+            var host = PageKit.MakeHost();
 
             var stack = new FlowLayoutPanel
             {
@@ -687,7 +687,7 @@ namespace McPackStudio
         public string Subtitle { get { return "版本信息、数据来源，以及运行内置的 232 项自测"; } }
 
         private Control _view;
-        private TextBox _log;
+        private RichTextBox _log;
         private FlatBtn _runBtn;
         private ReportGrid _info;
 

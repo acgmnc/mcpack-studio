@@ -28,7 +28,7 @@ namespace McPackStudio
         private TextBox _srcBox;
         private FlatBtn _srcZipBtn, _srcFolderBtn;
         private Label _srcInfo;
-        private ComboBox _targetCombo;
+        private FlatSelect _targetCombo;
         private Label _targetInfo;
         private ToolCheck _migrateAssets, _migrateLang;
         private ToolRadio _outFolder, _outZip;
@@ -36,10 +36,10 @@ namespace McPackStudio
         private FlatBtn _outBrowse;
         private FlatBtn _analyzeBtn, _previewBtn, _convertBtn;
         private ToolList _fileList;
-        private TextBox _logBox;
-        private ProgressBar _progress;
+        private RichTextBox _logBox;
+        private FancyProgress _progress;
         private ReportGrid _reportGrid;
-        private TabControl _tabs;
+        private PageTabs _tabs;
         private Label _summaryLabel;
 
         private sealed class ComboItem
@@ -62,7 +62,7 @@ namespace McPackStudio
         {
             if (_view != null) return _view;
 
-            var host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.BgBase, Padding = new Padding(18, 16, 18, 14), AutoScroll = true };
+            var host = PageKit.MakeHost();
 
             var stack = new FlowLayoutPanel
             {
@@ -73,8 +73,8 @@ namespace McPackStudio
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 BackColor = Theme.BgBase,
             };
-            host.Controls.Add(stack);
-            host.Resize += (s, e) => ResizeStack(stack, host);
+            host.Content.Controls.Add(stack);
+            host.Content.Resize += (s, e) => ResizeStack(stack, host);
 
             stack.Controls.Add(BuildSourceCard());
             stack.Controls.Add(BuildTargetCard());
@@ -86,9 +86,9 @@ namespace McPackStudio
         }
 
         /// <summary>卡片宽度要等加入容器后才知道，这里统一按宿主宽度铺开</summary>
-        private static void ResizeStack(FlowLayoutPanel stack, Panel host)
+        private static void ResizeStack(FlowLayoutPanel stack, DarkScrollHost host)
         {
-            int w = host.ClientSize.Width - host.Padding.Horizontal - 4;
+            int w = host.Content.ClientSize.Width - host.Padding.Horizontal - 4;
             if (w < 560) w = 560;
             foreach (Control c in stack.Controls)
             {
@@ -154,8 +154,8 @@ namespace McPackStudio
                下拉框固定宽度，右边留出来显示当前选中项的解释；
                之前让它 Dock=Fill 撑满整行，右边一大截空白看着像没排好。 */
             var rowTarget = new Panel { Dock = DockStyle.Top, Height = 32, BackColor = Color.Transparent };
-            _targetCombo = new ComboBox { Dock = DockStyle.Left, Width = 360 };
-            Ui.StyleCombo(_targetCombo);
+            _targetCombo = new FlatSelect { Dock = DockStyle.Left, Width = 360 };
+            Ui.StyleSelect(_targetCombo);
             _targetCombo.SelectedIndexChanged += (s, e) => OnTargetChanged();
 
             _targetInfo = new Label
@@ -244,7 +244,7 @@ namespace McPackStudio
             _previewBtn.Click += (s, e) => DoPreview();
             _convertBtn.Click += (s, e) => DoConvert();
 
-            _progress = new ProgressBar { Style = ProgressBarStyle.Continuous, Height = 16, Width = 200, Margin = new Padding(14, 8, 0, 0) };
+            _progress = new FancyProgress { Height = 16, Width = 200, Margin = new Padding(14, 8, 0, 0) };
 
             _summaryLabel = new Label
             {
@@ -260,17 +260,12 @@ namespace McPackStudio
             actions.Controls.Add(_progress);
             actions.Controls.Add(_summaryLabel);
 
-            _tabs = new TabControl
-            {
-                Dock = DockStyle.Fill,
-                Appearance = TabAppearance.Normal,
-                Font = Theme.F(9f),
-                SizeMode = TabSizeMode.Fixed,
-                ItemSize = new Size(100, 24),
-            };
+            /* 用自绘的 PageTabs 而不是原生 TabControl —— 原生页眉那片
+               系统浅灰压不住，在深色界面上就是一条白杠。 */
+            _tabs = new PageTabs { Dock = DockStyle.Fill };
 
             // --- 改动明细
-            var previewPage = new TabPage("改动明细") { BackColor = Theme.BgPanel };
+            var previewPage = new Panel { BackColor = Theme.BgPanel };
             var split = PageKit.MakeSplit(Orientation.Horizontal, 0.62, 90, 70);
             _fileList = new ToolList
             {
@@ -291,16 +286,17 @@ namespace McPackStudio
             _logBox = Ui.LogBox();
             split.Panel1.Controls.Add(_fileList);
             split.Panel2.Controls.Add(_logBox);
+            split.Dock = DockStyle.Fill;
 
             previewPage.Controls.Add(split);
 
             // --- 报告
-            var reportPage = new TabPage("转换报告") { BackColor = Theme.BgPanel };
+            var reportPage = new Panel { BackColor = Theme.BgPanel };
             _reportGrid = new ReportGrid();
             reportPage.Controls.Add(_reportGrid);
 
-            _tabs.TabPages.Add(previewPage);
-            _tabs.TabPages.Add(reportPage);
+            _tabs.AddPage("改动明细", previewPage);
+            _tabs.AddPage("转换报告", reportPage);
 
             // Dock.Fill 需要最后添加才会填充剩余空间
             card.Body.Controls.Add(_tabs);

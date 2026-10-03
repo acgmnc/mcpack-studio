@@ -28,7 +28,7 @@ namespace McPackStudio
         private ToolList _typeList;
         private PictureBox _imagePreview;
         private Label _info, _previewTitle, _audioInfo;
-        private ComboBox _typeFilter;
+        private FlatSelect _typeFilter;
         private SplitContainer _split;
 
         /// <summary>文件节点 → 相对路径</summary>
@@ -40,6 +40,15 @@ namespace McPackStudio
 
         public void OnEnter() { }
         public void OnLeave() { if (_analysis != null) { _analysis.Cleanup(); _analysis = null; } }
+
+        /// <summary>外部（启动参数 / 拖放 / 排版自检）预填源资源包并直接读取</summary>
+        public void PreloadSource(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            if (!Directory.Exists(path) && !File.Exists(path)) return;
+            _pathBox.Text = path;
+            DoLoad();
+        }
 
         public Control CreateView()
         {
@@ -133,8 +142,8 @@ namespace McPackStudio
             };
             _filterBox.TextChanged += (s, e) => RebuildTree();
 
-            _typeFilter = new ComboBox { Width = 240, Margin = new Padding(0, 2, 8, 0) };
-            Ui.StyleCombo(_typeFilter);
+            _typeFilter = new FlatSelect { Width = 240, Margin = new Padding(0, 2, 8, 0) };
+            Ui.StyleSelect(_typeFilter);
             _typeFilter.Items.Add("全部类型");
             _typeFilter.Items.Add("纹理 (textures)");
             _typeFilter.Items.Add("模型 (models)");
@@ -171,6 +180,10 @@ namespace McPackStudio
             };
             _tree.AfterSelect += (s, e) => OnTreeSelect();
             _tree.BeforeExpand += (s, e) => LazyLoad(e.Node);
+
+            /* TreeView 的滚动条也是系统画的，得让它走深色主题 */
+            _tree.HandleCreated += (s, e) => DarkMode.ApplyDeferred(_tree, 4);
+            _tree.SizeChanged += (s, e) => DarkMode.ApplyDeferred(_tree, 2);
 
             /* 类型列表 */
             _typeList = new ToolList
