@@ -283,7 +283,33 @@ namespace McPackStudio
             list.Add(tools);
 
             /* ============================================================
-             * 3. 设置与帮助
+             * 3. NBT —— 移植自 NBTExplorer（MIT，Justin Aquadro）的 NBT 数据能力
+             * ============================================================ */
+            var nbt = new MainModule
+            {
+                Id = "nbt",
+                Title = "NBT",
+                Icon = "❖",
+                Hint = "浏览、编辑与转换 Minecraft 的 NBT 数据",
+            };
+            nbt.Subs.Add(new SubModule
+            {
+                Id = "nbt.edit",
+                Title = "NBT 编辑器",
+                Hint = "树形浏览、增删改标签、查找替换、另存为",
+                Page = new NbtPage(),
+            });
+            nbt.Subs.Add(new SubModule
+            {
+                Id = "nbt.snbt",
+                Title = "SNBT 与 JSON",
+                Hint = "NBT 与文本互转：SNBT 读写、JSON 导出",
+                Page = new NbtSnbtPage(),
+            });
+            list.Add(nbt);
+
+            /* ============================================================
+             * 4. 设置与帮助
              * ============================================================ */
             var settings = new MainModule
             {
