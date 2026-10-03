@@ -347,8 +347,132 @@ namespace McPackStudio
             try { DwmSetWindowAttribute(handle, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref on, sizeof(int)); }
             catch { }
 
-            // 让滚动条、编辑框等子控件用深色主题
-            try { SetWindowTheme(handle, "DarkMode_Explorer", null); } catch { }
+            ApplyThemeToTree(handle, 0);
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool EnumChildWindows(IntPtr parent, EnumProc cb, IntPtr param);
+
+        private delegate bool EnumProc(IntPtr hWnd, IntPtr param);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder buf, int max);
+
+        /// <summary>
+        /// 这个窗口类不能套深色主题。
+        ///
+        /// 两个反例，都是实测出来的：
+        ///   · ComboBox —— 套上 DarkMode_Explorer 边框会变成纯白
+        ///     （界面上的下拉框现在都换成了自绘的 FlatSelect，这里留个保险）
+        ///   · EDIT（多行 TextBox）—— 套上之后滚动条槽会露出一条 17px 宽的
+        ///     浅色竖条；保持系统默认反而是深色的
+        /// </summary>
+        private static bool SkipTheme(IntPtr hWnd)
+        {
+            try
+            {
+                var sb = new System.Text.StringBuilder(128);
+                if (GetClassName(hWnd, sb, sb.Capacity) <= 0) return false;
+                string cls = sb.ToString().ToUpperInvariant();
+                return cls.Contains("COMBOBOX") || cls.Contains("EDIT");
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 递归给窗口和它的子窗口套用深色主题。
+        ///
+        /// ScrollBar 是独立的子窗口，只对 ListView 本体调 SetWindowTheme 不够 ——
+        /// 滚动条仍然按系统浅色绘制，在深色界面里非常突兀。
+        /// 这些子窗口还是延迟创建的（出现滚动条时才建），所以要反复调用。
+        /// </summary>
+        public static void ApplyThemeToTree(IntPtr handle, int depth)
+        {
+            if (handle == IntPtr.Zero || depth > 6) return;
+
+            bool isEdit = ClassOf(handle).Contains("EDIT");
+            bool isCombo = ClassOf(handle).Contains("COMBOBOX");
+
+            if (isCombo)
+            {
+                try { SetWindowTheme(handle, " ", null); } catch { }
+            }
+            else if (isEdit)
+            {
+                if (EditMode == "edit=skip") return;        // 连子窗口都不动
+                try { SetWindowTheme(handle, EditMode == "edit=theme" ? ThemeName : " ", null); } catch { }
+            }
+            else
+            {
+                try { SetWindowTheme(handle, ThemeName, null); } catch { }
+            }
+
+            /* 关键：跳过的是「窗口自己」，但它的滚动条子窗口还是要套主题。
+               TextBox（EDIT）就是这样 —— 给 EDIT 套深色会露出浅色滚动条槽，
+               但它的滚动条不套又一直是浅灰的，只能分开处理。 */
+            try
+            {
+                EnumChildWindows(handle, (child, param) =>
+                {
+                    ApplyThemeToTree(child, depth + 1);
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch { }
+        }
+
+        private static string ClassOf(IntPtr hWnd)
+        {
+            try
+            {
+                var sb = new System.Text.StringBuilder(128);
+                if (GetClassName(hWnd, sb, sb.Capacity) <= 0) return "";
+                return sb.ToString().ToUpperInvariant();
+            }
+            catch { return ""; }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        private const uint WM_THEMECHANGED = 0x031A;
+
+        /// <summary>当前生效的主题名，调试不同主题时用</summary>
+        public static string ThemeName = "DarkMode_Explorer";
+
+        /// <summary>
+        /// EDIT（多行 TextBox）的处理方式，供实测对比：
+        ///   edit=space  跳过它自己，套空主题
+        ///   edit=theme  跳过它自己，套工作主题
+        ///   edit=skip   连它的子窗口（滚动条）一起跳过
+        /// </summary>
+        public static string EditMode = "edit=space";
+
+        /// <summary>
+        /// 延迟重试套用深色主题，专治滚动条。
+        ///
+        /// 滚动条是延迟创建的子窗口：控件尺寸变化、内容行数变化时才出现，
+        /// 而且它出现后会用自己的默认外观绘制一遍 —— 在出现之前套主题是白费劲。
+        /// 所以推迟到本次消息处理完，再连试几次，把它盖住。
+        /// </summary>
+        public static void ApplyDeferred(Control c, int attempts)
+        {
+            if (c == null || attempts <= 0) return;
+
+            EventHandler once = null;
+            once = (s, e) =>
+            {
+                Application.Idle -= once;
+                if (c.IsDisposed || !c.IsHandleCreated) return;
+
+                ApplyThemeToTree(c.Handle, 0);
+                // 主题变了要让它重画，否则滚动条还按旧配色显示
+                try { PostMessage(c.Handle, WM_THEMECHANGED, IntPtr.Zero, IntPtr.Zero); } catch { }
+                c.Invalidate();
+
+                if (attempts > 1) ApplyDeferred(c, attempts - 1);
+            };
+            Application.Idle += once;
         }
     }
 
@@ -370,8 +494,11 @@ namespace McPackStudio
     /// </summary>
     internal static class PageKit
     {
-        /// <summary>一列纵向排列的卡片容器，宽度随窗口自适应</summary>
-        public static FlowLayoutPanel MakeStack(Panel host)
+        /// <summary>
+        /// 一列纵向排列的卡片容器，宽度随窗口自适应。
+        /// 会自动挂到滚动容器的 Content 上，调用方不用再 Add。
+        /// </summary>
+        public static FlowLayoutPanel MakeStack(DarkScrollHost host)
         {
             var stack = new FlowLayoutPanel
             {
@@ -382,24 +509,32 @@ namespace McPackStudio
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 BackColor = Theme.BgBase,
             };
-            host.Controls.Add(stack);
-            host.Resize += (s, e) =>
+            host.Content.Controls.Add(stack);
+
+            Action fit = () =>
             {
-                int w = host.ClientSize.Width - host.Padding.Horizontal - 4;
+                int w = host.Content.ClientSize.Width - host.Padding.Horizontal - 4;
                 if (w < 400) w = 400;
                 foreach (Control c in stack.Controls) c.Width = w;
             };
+
+            host.Content.Resize += (s, e) => fit();
+            stack.ControlAdded += (s, e) => fit();
+            fit();
+
             return stack;
         }
 
-        public static Panel MakeHost()
+        /// <summary>
+        /// 页面宿主：一个带深色滚动条的滚动容器。
+        /// 原来这里是 AutoScroll 的 Panel，换成 DarkScrollHost 以消灭白色滚动条滑块。
+        /// </summary>
+        public static DarkScrollHost MakeHost()
         {
-            return new Panel
+            return new DarkScrollHost
             {
                 Dock = DockStyle.Fill,
-                BackColor = Theme.BgBase,
                 Padding = new Padding(18, 16, 18, 14),
-                AutoScroll = true,
             };
         }
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
@@ -73,7 +73,7 @@ namespace McPackStudio
 
         public Control CreateView()
         {
-            var host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.BgBase, AutoScroll = true };
+            var host = PageKit.MakeHost();
 
             var card = new Panel
             {

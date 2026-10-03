@@ -297,22 +297,41 @@ namespace McPackStudio
             catch { }
 
             /* 滚动条由系统绘制，得让它走深色主题 */
-            HandleCreated += (s, e) => DarkMode.ApplyTo(Handle);
+            HandleCreated += (s, e) =>
+            {
+                DarkMode.ApplyTo(Handle);
+                DarkMode.ApplyDeferred(this, 4);
+            };
 
             /*
-             * 兜底背景。
+             * 兜底背景 + 滚动条深色化。
              *
              * OwnerDraw 只对「真实存在的列/项」触发绘制事件，
              * 列宽加起来没占满控件时，右侧会露出一条系统配色的白边
              * （ListView 自身没有横跨整行的画布事件可用）。
              * 这里先手动画一次背景，把那条白边盖掉。
+             *
+             * 尺寸一变滚动条就可能出现/消失，这时要重新套一次主题。
              */
             Paint += (s, e) =>
             {
                 using (var b = new SolidBrush(Theme.BgInput))
                     e.Graphics.FillRectangle(b, ClientRectangle);
+
+                /* 滚动条可能在使用过程中才出现（加了几行数据、窗口变小），
+                   出现时是系统浅色。这里保留若干次补救机会，
+                   次数用光就停，避免每帧都去枚举子窗口。 */
+                if (_themeChecks < 20)
+                {
+                    _themeChecks++;
+                    DarkMode.ApplyThemeToTree(Handle, 0);
+                }
             };
+
+            SizeChanged += (s, e) => DarkMode.ApplyDeferred(this, 2);
         }
+
+        private int _themeChecks;
 
         /// <summary>
         /// 按 (标题, 宽度) 建列。宽度传 -1 表示这一列吃掉剩余宽度。
@@ -440,6 +459,9 @@ namespace McPackStudio
             RowHeadersVisible = false;
             BorderStyle = BorderStyle.None;
             BackgroundColor = Theme.BgInput;
+            /* 顶部留 1px：DataGridView 会在内容区最上沿画一道系统配色的白线，
+               各种边框属性都关不掉，用内边距把它挤出可视范围。 */
+            Padding = new Padding(0, 1, 0, 0);
             GridColor = Theme.LineSoft;
             Font = Theme.F(8.5f);
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
@@ -464,6 +486,38 @@ namespace McPackStudio
             Columns.Add("v", "内容");
             Columns[0].FillWeight = 22;
             Columns[1].FillWeight = 78;
+
+            /* 单元格背景设了深色还不够 —— 滚动条、行头是系统画的子窗口，
+               不套深色主题的话右边和下边会各挂一条浅灰条。 */
+            HandleCreated += (s, e) =>
+            {
+                DarkMode.ApplyTo(Handle);
+                DarkMode.ApplyDeferred(this, 4);
+            };
+            SizeChanged += (s, e) => DarkMode.ApplyDeferred(this, 2);
+        }
+
+        /// <summary>
+        /// 盖掉最外圈那一条白边。
+        ///
+        /// DataGridView 画完内容后会在边框位置补一圈系统配色的边线，
+        /// BorderStyle.None 挡不住（AdvancedBorderStyle 是只读的），
+        /// 在深色主题下就是表格顶上一条纯白线（实测 RGB 255,255,255）。
+        /// 这里先用背景色铺满整块，再把父类的内容绘制裁到内侧 1px 以内，
+        /// 让它画不到边框那一圈。
+        /// </summary>
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            int w = Width, h = Height;
+            if (w < 4 || h < 4) { base.OnPaint(e); return; }
+
+            using (var b = new SolidBrush(Theme.BgInput))
+                e.Graphics.FillRectangle(b, 0, 0, w, h);
+
+            var old = e.Graphics.Clip;
+            e.Graphics.SetClip(new Rectangle(1, 1, w - 2, h - 2));
+            base.OnPaint(e);
+            e.Graphics.Clip = old;
         }
 
         public void Add(string key, string value)
@@ -540,19 +594,28 @@ namespace McPackStudio
             };
         }
 
-        public static TextBox LogBox()
+        /// <summary>
+        /// 只读日志框。
+        ///
+        /// 用 RichTextBox 而不是多行 TextBox：多行 TextBox 的滚动条是原生控件，
+        /// 在深色主题下滚动块的滑块始终是白的（实测各种主题名都压不住，
+        /// 只有 17px 宽的一条，但很显眼）。RichTextBox 可以用 ScrollBars.None
+        /// 完全去掉系统滚动条 —— 它自带鼠标滚轮和键盘滚动，不影响使用。
+        /// </summary>
+        public static RichTextBox LogBox()
         {
-            return new TextBox
+            return new RichTextBox
             {
                 Dock = DockStyle.Fill,
-                Multiline = true,
                 ReadOnly = true,
-                ScrollBars = ScrollBars.Both,
+                ScrollBars = RichTextBoxScrollBars.None,
                 WordWrap = false,
                 BackColor = Theme.BgInput,
                 ForeColor = Theme.FgMuted,
                 BorderStyle = BorderStyle.None,
                 Font = Theme.M(8.5f),
+                DetectUrls = false,
+                ShortcutsEnabled = true,
             };
         }
 
@@ -570,6 +633,19 @@ namespace McPackStudio
             c.DropDownHeight = 340;
         }
 
+        /// <summary>
+        /// 统一下拉框外观。用自绘的 FlatSelect 而不是原生 ComboBox：
+        /// 原生 ComboBox 的边框与下拉按钮由系统绘制，是纯白的
+        /// （实测 RGB 255,255,255），BackColor / FlatStyle / SetWindowTheme
+        /// 都改不动它，在深色界面上就是一圈刺眼的白框。
+        /// </summary>
+        public static void StyleSelect(FlatSelect c)
+        {
+            c.BackColor = Theme.BgInput;
+            c.ForeColor = Theme.Fg;
+            c.Font = Theme.F(9.5f);
+        }
+
         public static string FormatBytes(long bytes)
         {
             if (bytes <= 0) return "0 B";
@@ -580,7 +656,7 @@ namespace McPackStudio
             return v.ToString(i == 0 ? "0" : "1") + " " + units[i];
         }
 
-        public static void AppendLog(TextBox box, string line)
+        public static void AppendLog(RichTextBox box, string line)
         {
             box.AppendText(line + Environment.NewLine);
             try

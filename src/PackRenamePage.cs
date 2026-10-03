@@ -22,8 +22,9 @@ namespace McPackStudio
         private Control _view;
         private PackAnalysis _analysis;
 
-        private TextBox _pathBox, _findBox, _replaceBox, _prefixBox, _suffixBox, _extBox, _dirBox, _containsBox, _numFmtBox, _log;
-        private ComboBox _modeCombo, _scopeCombo;
+        private TextBox _pathBox, _findBox, _replaceBox, _prefixBox, _suffixBox, _extBox, _dirBox, _containsBox, _numFmtBox;
+        private RichTextBox _log;
+        private FlatSelect _modeCombo, _scopeCombo;
         private NumericUpDown _numStart, _numStep;
         private ToolCheck _useRegex, _caseSensitive;
         private ToolList _preview;
@@ -32,6 +33,15 @@ namespace McPackStudio
 
         public void OnEnter() { }
         public void OnLeave() { if (_analysis != null) { _analysis.Cleanup(); _analysis = null; } }
+
+        /// <summary>外部（启动参数 / 拖放 / 排版自检）预填源资源包并直接读取</summary>
+        public void PreloadSource(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            if (!Directory.Exists(path) && !File.Exists(path)) return;
+            _pathBox.Text = path;
+            DoLoad();
+        }
 
         public Control CreateView()
         {
@@ -108,8 +118,8 @@ namespace McPackStudio
         {
             var card = new Card { Title = "② 重命名规则", Hint = "改动任一选项后点「预览」重新计算结果", Height = 398, Margin = new Padding(0, 0, 0, 12) };
 
-            _modeCombo = new ComboBox { Dock = DockStyle.Left, Width = 200 };
-            Ui.StyleCombo(_modeCombo);
+            _modeCombo = new FlatSelect { Dock = DockStyle.Left, Width = 200 };
+            Ui.StyleSelect(_modeCombo);
             _modeCombo.Items.Add("查找替换");
             _modeCombo.Items.Add("加前缀");
             _modeCombo.Items.Add("加后缀");
@@ -117,8 +127,8 @@ namespace McPackStudio
             _modeCombo.SelectedIndex = 0;
             _modeCombo.SelectedIndexChanged += (s, e) => UpdateModeUi();
 
-            _scopeCombo = new ComboBox { Dock = DockStyle.Left, Width = 280 };
-            Ui.StyleCombo(_scopeCombo);
+            _scopeCombo = new FlatSelect { Dock = DockStyle.Left, Width = 280 };
+            Ui.StyleSelect(_scopeCombo);
             _scopeCombo.Items.Add("只改文件名（保留扩展名）");
             _scopeCombo.Items.Add("文件名 + 扩展名");
             _scopeCombo.Items.Add("完整相对路径（可改目录名）");
