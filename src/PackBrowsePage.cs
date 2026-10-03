@@ -238,27 +238,11 @@ namespace McPackStudio
             previewHolder.Controls.Add(_previewTitle);
 
             /* 布局：左树 | 右（上列表 / 下预览） */
-            var right = new SplitContainer
-            {
-                Dock = DockStyle.Fill,
-                Orientation = Orientation.Horizontal,
-                SplitterDistance = 150,
-                BackColor = Theme.Line,
-                Panel1MinSize = 80,
-                Panel2MinSize = 120,
-            };
+            var right = PageKit.MakeSplit(Orientation.Horizontal, 0.34, 70, 110);
             right.Panel1.Controls.Add(_typeList);
             right.Panel2.Controls.Add(previewHolder);
 
-            _split = new SplitContainer
-            {
-                Dock = DockStyle.Fill,
-                Orientation = Orientation.Vertical,
-                SplitterDistance = 360,
-                BackColor = Theme.Line,
-                Panel1MinSize = 200,
-                Panel2MinSize = 240,
-            };
+            _split = PageKit.MakeSplit(Orientation.Vertical, 0.32, 180, 220);
             _split.Panel1.Controls.Add(_tree);
             _split.Panel2.Controls.Add(right);
 

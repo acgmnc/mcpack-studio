@@ -456,5 +456,75 @@ namespace McPackStudio
             return MessageBox.Show(owner, text, "确认", MessageBoxButtons.OKCancel, MessageBoxIcon.Question)
                    == DialogResult.OK;
         }
+
+        /// <summary>
+        /// 安全地创建 SplitContainer。
+        ///
+        /// SplitContainer 有个坑：构造时它还没有真实尺寸（Width/Height 是默认值），
+        /// 此时设 <c>Panel1MinSize</c> / <c>Panel2MinSize</c> / <c>SplitterDistance</c>
+        /// 任何一个都会立刻触发
+        /// 「SplitterDistance 必须在 Panel1MinSize 和 Width - Panel2MinSize 之间」的异常，
+        /// 因为三个值要同时满足约束，而构造时容器只有 150×100 的默认大小。
+        ///
+        /// 所以构造阶段一个都不设，等控件拿到真实尺寸后再一并设置并夹到合法区间。
+        /// </summary>
+        public static SplitContainer MakeSplit(Orientation orientation, double ratio, int min1, int min2)
+        {
+            var sp = new SplitContainer
+            {
+                Dock = DockStyle.Fill,
+                Orientation = orientation,
+                BackColor = Theme.Line,
+            };
+
+            bool applied = false;
+
+            Action place = () =>
+            {
+                int total = orientation == Orientation.Vertical ? sp.Width : sp.Height;
+                if (total <= 0) return;
+
+                /* 容器还塞不下两组最小尺寸时，先什么都不设，等下一次尺寸变化 */
+                int need = min1 + min2 + sp.SplitterWidth + 1;
+                if (total < need) return;
+
+                int lo = min1;
+                int hi = total - min2 - sp.SplitterWidth;
+                if (hi < lo) return;
+
+                int want = (int)(total * ratio);
+                if (want < lo) want = lo;
+                if (want > hi) want = hi;
+
+                try
+                {
+                    /* 顺序很重要：先把分割位置夹进「不含 MinSize 的」合法区间，
+                       再放宽 MinSize，最后才收窄 MinSize。这样中间任何一步都不会违规。 */
+                    if (!applied)
+                    {
+                        /* 首次：MinSize 还是 0，可以先自由设分割位置 */
+                        sp.SplitterDistance = want;
+                        if (sp.Panel1MinSize != min1) sp.Panel1MinSize = min1;
+                        if (sp.Panel2MinSize != min2) sp.Panel2MinSize = min2;
+                        applied = true;
+                    }
+                    else
+                    {
+                        /* 之后只是跟随缩放：先确保分割位置在新区间内，再维持 MinSize */
+                        if (sp.SplitterDistance != want) sp.SplitterDistance = want;
+                    }
+                }
+                catch (InvalidOperationException) { }
+                catch (ArgumentOutOfRangeException) { }
+            };
+
+            sp.HandleCreated += (s, e) => place();
+            sp.SizeChanged += (s, e) => place();
+
+            /* 立刻建一次句柄，让 place() 至少跑一次；
+               之后控件被挂进窗体、拿到真实尺寸时会由 SizeChanged 再修正。 */
+            sp.CreateControl();
+            return sp;
+        }
     }
 }

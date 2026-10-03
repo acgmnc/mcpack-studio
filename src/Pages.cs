@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -164,15 +164,7 @@ namespace McPackStudio
             _scanBtn.Click += (s, e) => DoScan();
             _runBtn.Click += (s, e) => DoRun();
 
-            var split = new SplitContainer
-            {
-                Dock = DockStyle.Fill,
-                Orientation = Orientation.Horizontal,
-                SplitterDistance = 200,
-                BackColor = Theme.Line,
-                Panel1MinSize = 90,
-                Panel2MinSize = 70,
-            };
+            var split = PageKit.MakeSplit(Orientation.Horizontal, 0.6, 90, 70);
             _list = new ListView
             {
                 Dock = DockStyle.Fill,
@@ -714,15 +706,7 @@ namespace McPackStudio
 
             var host = new Panel { Dock = DockStyle.Fill, BackColor = Theme.BgBase, Padding = new Padding(18, 16, 18, 14) };
 
-            var split = new SplitContainer
-            {
-                Dock = DockStyle.Fill,
-                Orientation = Orientation.Horizontal,
-                SplitterDistance = 300,
-                BackColor = Theme.Line,
-                Panel1MinSize = 140,
-                Panel2MinSize = 140,
-            };
+            var split = PageKit.MakeSplit(Orientation.Horizontal, 0.46, 130, 130);
 
             /* ---- 上：信息 + 自测按钮 ---- */
             var top = new Panel { Dock = DockStyle.Fill, BackColor = Theme.BgBase };

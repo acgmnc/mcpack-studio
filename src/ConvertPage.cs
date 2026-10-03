@@ -271,15 +271,7 @@ namespace McPackStudio
 
             // --- 改动明细
             var previewPage = new TabPage("改动明细") { BackColor = Theme.BgPanel };
-            var split = new SplitContainer
-            {
-                Dock = DockStyle.Fill,
-                Orientation = Orientation.Horizontal,
-                SplitterDistance = 210,
-                BackColor = Theme.Line,
-                Panel1MinSize = 90,
-                Panel2MinSize = 70,
-            };
+            var split = PageKit.MakeSplit(Orientation.Horizontal, 0.62, 90, 70);
             _fileList = new ListView
             {
                 Dock = DockStyle.Fill,
