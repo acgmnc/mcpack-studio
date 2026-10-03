@@ -22,7 +22,8 @@ namespace McPackStudio
         public event EventHandler<string> StatusChanged;
 
         private Control _view;
-        private TextBox _pathBox, _text;
+        private TextBox _pathBox;
+        private RichTextBox _text;
         private Label _info, _state;
         private NbtCompound _parsedRoot;
         private string _parsedRootName = "";
@@ -110,16 +111,18 @@ namespace McPackStudio
             bar.Controls.Add(check);
             bar.Controls.Add(clear);
 
-            _text = new TextBox
+            /* RichTextBox + 关掉系统滚动条：多行 TextBox 的滚动条在深色主题下是白的 */
+            _text = new RichTextBox
             {
                 Dock = DockStyle.Fill,
-                Multiline = true,
-                ScrollBars = ScrollBars.Both,
+                ScrollBars = RichTextBoxScrollBars.None,
                 WordWrap = false,
-                AcceptsReturn = true,
+                DetectUrls = false,
+                ShortcutsEnabled = true,
                 BackColor = Theme.BgInput,
                 ForeColor = Theme.Fg,
-                BorderStyle = BorderStyle.FixedSingle,
+                /* 边框关掉：FixedSingle 的框线是系统画的纯白线，深色主题下压不住 */
+                BorderStyle = BorderStyle.None,
                 Font = Theme.M(9f),
             };
             _text.TextChanged += (s, e) => { _parsedRoot = null; _state.Text = "文本有改动，还没校验。"; _state.ForeColor = Theme.FgFaint; };
