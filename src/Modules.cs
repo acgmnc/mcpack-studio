@@ -221,11 +221,7 @@ namespace McPackStudio
                 Id = "pack.merge",
                 Title = "合并资源包",
                 Hint = "添加来源 → 调整优先级 → 解决冲突 → 合成",
-                Page = new PlannedPage("合并资源包",
-                    "把多个资源包按优先级融合成一个，冲突文件逐个决定用谁的版本。",
-                    new[] { "添加多个来源（ZIP / 文件夹）", "调整优先级顺序（决定冲突时谁的版本胜出）",
-                            "扫描并列出所有同名冲突文件", "冲突逐个选择保留哪一份，或直接排除",
-                            "按通配符设置黑白名单", "指定输出描述与 pack_format" }),
+                Page = new PackMergePage(),
             });
 
             /* --- 1.3 浏览与编辑 --- */
@@ -234,40 +230,28 @@ namespace McPackStudio
                 Id = "pack.browse",
                 Title = "内容浏览",
                 Hint = "文件树与按类型浏览，查看图片、音频与文本",
-                Page = new PlannedPage("内容浏览",
-                    "打开资源包后浏览它的全部资源，图片可直接预览。",
-                    new[] { "文件树浏览（懒加载、按名称过滤）", "按资源类型分类浏览（纹理 / 模型 / 音效 / 语言…）",
-                            "PNG 图片预览与像素级编辑", "音效试听", "JSON 语法高亮与校验" }),
+                Page = new PackBrowsePage(),
             });
             pack.Subs.Add(new SubModule
             {
                 Id = "pack.meta",
                 Title = "pack.mcmeta",
                 Hint = "可视化编辑描述、图标与版本声明",
-                Page = new PlannedPage("pack.mcmeta 编辑",
-                    "直接编辑资源包的元数据，带 § 颜色码实时预览。",
-                    new[] { "描述可视化编辑与游戏内预览", "版本声明（pack_format / min-max_format）",
-                            "pack.png 图标替换", "原始 JSON 双向编辑" }),
+                Page = new PackMetaPage(),
             });
             pack.Subs.Add(new SubModule
             {
                 Id = "pack.rename",
                 Title = "批量重命名",
                 Hint = "按规则批量改名，支持正则与预览",
-                Page = new PlannedPage("批量重命名",
-                    "对整个资源包按规则批量改名，改之前先看预览。",
-                    new[] { "查找替换、加前缀后缀、序号编号", "支持正则表达式与捕获组",
-                            "按扩展名 / 目录筛选", "执行前逐条预览，可逐项取消" }),
+                Page = new PackRenamePage(),
             });
             pack.Subs.Add(new SubModule
             {
                 Id = "pack.new",
                 Title = "新建资源包",
                 Hint = "生成标准目录结构与默认图标",
-                Page = new PlannedPage("新建资源包",
-                    "从零创建一个符合当前版本规范的空资源包。",
-                    new[] { "按所选版本生成标准目录结构", "自动创建 1.21.4+ 的 items 目录",
-                            "生成 pack.mcmeta 与默认 pack.png", "可选预置常用子目录" }),
+                Page = new PackNewPage(),
             });
 
             list.Add(pack);
@@ -294,10 +278,7 @@ namespace McPackStudio
                 Id = "tools.icon",
                 Title = "图标与占位图",
                 Hint = "生成 pack.png 与纯色 / 透明占位贴图",
-                Page = new PlannedPage("图标与占位图",
-                    "快速生成占位图片，省得开绘图软件。",
-                    new[] { "生成 pack.png 资源包图标", "生成指定尺寸的纯色 / 透明贴图",
-                            "按网格生成占位方块贴图", "批量导出多个尺寸" }),
+                Page = new IconPage(),
             });
             list.Add(tools);
 

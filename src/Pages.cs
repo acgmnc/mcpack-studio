@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -698,7 +698,7 @@ namespace McPackStudio
     internal sealed class AboutPage : IModulePage
     {
         public string Title { get { return "关于与自测"; } }
-        public string Subtitle { get { return "版本信息、数据来源，以及运行内置的 153 项自测"; } }
+        public string Subtitle { get { return "版本信息、数据来源，以及运行内置的 232 项自测"; } }
 
         private Control _view;
         private TextBox _log;

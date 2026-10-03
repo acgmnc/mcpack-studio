@@ -1,18 +1,26 @@
-# 构建产物
+﻿# 构建产物
 /MCPackStudio.exe
 /release/*.exe
 /release/selftest.txt
 /release/demo.txt
 
 # 调试 / 截图产物
+# 注意：这里只能忽略「仓库根目录」的 png，不能用 *.png ——
+# 那会把 testpack 里的纹理也一起忽略掉（曾经漏提交过 13 个纹理文件）。
 /shots/
 /layout.txt
 /selftest.txt
-*.png
+/*.png
+/*-shot.png
 
 # 本地临时输出
 /rel-demo/
+/rename-out/
 /testpack-1.12/*.zip
+/testpack-conflict/*.zip
 
 # 参考仓库（上游源码，不随本仓库分发）
 /mc-rp-editor-ref/
+
+# 调试截图产物（--shots 的输出）
+/tools/out/

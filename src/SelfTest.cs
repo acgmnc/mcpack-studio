@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -54,6 +55,18 @@ namespace McPackStudio
 
                 Section("10. 边界与错误处理");
                 TestEdgeCases();
+
+                Section("11. 合并资源包");
+                TestMerge();
+
+                Section("12. PNG 编码器");
+                TestPngWriter();
+
+                Section("13. 新建资源包骨架");
+                TestScaffold();
+
+                Section("14. 批量重命名");
+                TestRename();
             }
             catch (Exception e)
             {
@@ -794,6 +807,455 @@ namespace McPackStudio
         /// 造一个 1.12 风格的资源包：pack_format 3、textures/blocks 与
         /// textures/items 复数目录、en_US.lang 语言文件。
         /// </summary>
+        /* ============================================================ */
+        /* 11. 合并资源包                                                */
+        /* ============================================================ */
+
+        /// <summary>造一个与 BuildLegacyPack 部分同名、但有两个文件内容不同的包</summary>
+        private static void BuildConflictPack(string root)
+        {
+            BuildLegacyPack(root);
+
+            // 同名但内容不同 → 真冲突
+            File.WriteAllText(Path.Combine(root, "assets", "minecraft", "models", "block", "stone.json"),
+                "{\n  \"parent\": \"block/cube_all\",\n  \"textures\": {\"all\": \"blocks/stone_variant\"}\n}",
+                new UTF8Encoding(false));
+
+            File.WriteAllText(Path.Combine(root, "pack.mcmeta"),
+                "{\n  \"pack\": {\n    \"pack_format\": 4,\n    \"description\": \"Conflict Pack\"\n  }\n}",
+                new UTF8Encoding(false));
+
+            // 只在这个包里存在的文件
+            File.WriteAllBytes(Path.Combine(root, "assets", "minecraft", "textures", "blocks", "only_here.png"),
+                MakeTinyPng());
+        }
+
+        private static void TestMerge()
+        {
+            string a = Path.Combine(_root, "merge_a");
+            string b = Path.Combine(_root, "merge_b");
+            BuildLegacyPack(a);
+            BuildConflictPack(b);
+
+            var sources = new List<MergeSource>
+            {
+                new MergeSource { Path = a, Label = "A" },
+                new MergeSource { Path = b, Label = "B" },
+            };
+
+            var plan = PackMerger.Plan(sources, null);
+
+            Check("两个来源都被识别", sources.All(s => s.Enabled),
+                string.Join(";", sources.Select(s => s.Label + "=" + s.Enabled).ToArray()));
+
+            /* 同名文件：stone.json 与 pack.mcmeta 内容不同，其余相同 */
+            Eq("检测到 2 个内容不同的冲突", plan.RealConflictCount, 2);
+            Check("冲突总数 >= 2", plan.ConflictCount >= 2, "实际 " + plan.ConflictCount);
+
+            var rowConflict = plan.Conflicts.FirstOrDefault(c => c.RelPath.EndsWith("stone.json"));
+            Check("stone.json 被识别为冲突", rowConflict != null);
+            Check("stone.json 的内容被判为不同", rowConflict != null && !rowConflict.SameContent);
+            Check("stone.json 涉及两个来源", rowConflict != null && rowConflict.Owners.Count == 2);
+
+            var sameFile = plan.Conflicts.FirstOrDefault(c => c.RelPath.EndsWith("apple.png"));
+            Check("内容相同的同名文件被判为 SameContent", sameFile != null && sameFile.SameContent);
+
+            /* 默认按优先级：A 在前，所以 A 胜出 */
+            var dStone = plan.Decisions.FirstOrDefault(d => d.RelPath.EndsWith("stone.json"));
+            Eq("默认胜出者是优先级的第一个（A）", sources[dStone.WinnerIndex].Label, "A");
+
+            /* 只在这个包里有的文件也要被收进来 */
+            Check("B 独有的文件进入合并结果",
+                plan.Decisions.Any(d => d.RelPath.EndsWith("only_here.png")));
+
+            /* 改选 B 胜出 */
+            var choices = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            choices[rowConflict.RelPath] = 1;   // 下标 1 = B
+            PackMerger.ApplyConflictChoices(plan, choices);
+            Eq("改选后胜出者变为 B", sources[dStone.WinnerIndex].Label, "B");
+
+            /* 排除 */
+            choices[rowConflict.RelPath] = -1;
+            PackMerger.ApplyConflictChoices(plan, choices);
+            Check("可以排除某个冲突文件", dStone.Excluded);
+
+            /* 恢复默认并执行 */
+            choices[rowConflict.RelPath] = 0;
+            PackMerger.ApplyConflictChoices(plan, choices);
+
+            string outDir = Path.Combine(_root, "merge_out");
+            plan.OutputPath = outDir;
+            plan.Mode = StageOutput.Folder;
+            plan.TargetFormat = 15;
+            plan.NewDescription = "Merged by selftest";
+
+            var report = PackMerger.Execute(plan, null);
+            Check("合并执行成功", report.Ok, report.Error);
+            Check("输出目录已生成", Directory.Exists(outDir));
+
+            /* A 胜出，所以 stone.json 应是 A 的版本 */
+            string stone = Path.Combine(outDir, "assets", "minecraft", "models", "block", "stone.json");
+            Check("冲突文件写的是胜出来源的内容",
+                File.Exists(stone) && File.ReadAllText(stone).Contains("blocks/stone\""),
+                File.Exists(stone) ? File.ReadAllText(stone) : "(缺失)");
+
+            Check("来源独有的文件被合并进来",
+                File.Exists(Path.Combine(outDir, "assets", "minecraft", "textures", "blocks", "only_here.png")));
+
+            /* pack.mcmeta 被改写 */
+            JsonValue meta; string err;
+            string metaText = File.ReadAllText(Path.Combine(outDir, "pack.mcmeta"));
+            Check("合并后的 pack.mcmeta 是合法 JSON", Json.TryParse(metaText, out meta, out err), err);
+            if (meta != null)
+            {
+                var pack = meta.Get("pack");
+                Eq("pack_format 被设为 15", pack.Get("pack_format").AsInt(), 15);
+                Eq("描述被替换", pack.Get("description").StringValue, "Merged by selftest");
+            }
+
+            /* 输出必须能被自己重新分析 */
+            var re = PackAnalyzer.Analyze(outDir);
+            Check("合并输出可被重新分析", re.Ok, re.Error);
+
+            /* 不允许把输出写进输入目录 */
+            string bad = StagedWriter.CheckOutput(a, Path.Combine(a, "sub"));
+            Check("拒绝把输出写进输入目录内部", bad != null);
+            string same = StagedWriter.CheckOutput(a, a);
+            Check("拒绝输出路径等于输入路径", same != null);
+
+            foreach (var s in sources) if (s.Analysis != null) s.Analysis.Cleanup();
+        }
+
+        /* ============================================================ */
+        /* 12. PNG 编码器                                                */
+        /* ============================================================ */
+
+        private static void TestPngWriter()
+        {
+            /* 手写的 CRC32 / zlib 必须能被真正的解码器接受 —— 用 GDI+ 反过来读 */
+            byte[] png = IconMaker.Make(32, IconPattern.Solid, Color.FromArgb(255, 0, 0), Color.Black, 8, null);
+
+            Check("PNG 文件头正确",
+                png.Length > 8 && png[0] == 0x89 && png[1] == 0x50 && png[2] == 0x4E && png[3] == 0x47);
+
+            string path = Path.Combine(_root, "icon_solid.png");
+            File.WriteAllBytes(path, png);
+
+            bool decoded = false;
+            int w = 0, h = 0;
+            Color first = Color.Empty;
+            try
+            {
+                using (var img = Image.FromFile(path))
+                {
+                    decoded = true;
+                    w = img.Width; h = img.Height;
+                    using (var bmp = new Bitmap(img))
+                        first = bmp.GetPixel(0, 0);
+                }
+            }
+            catch (Exception e)
+            {
+                Check("GDI+ 能解码我们生成的 PNG", false, e.Message);
+            }
+
+            Check("GDI+ 能解码我们生成的 PNG", decoded);
+            Eq("宽 = 32", w, 32);
+            Eq("高 = 32", h, 32);
+            Check("像素是纯红且不透明",
+                first.R == 255 && first.G == 0 && first.B == 0 && first.A == 255,
+                first.ToString());
+
+            /* 透明图 */
+            byte[] tr = IconMaker.Make(8, IconPattern.Transparent, Color.White, Color.Black, 4, null);
+            string tp = Path.Combine(_root, "icon_tr.png");
+            File.WriteAllBytes(tp, tr);
+            try
+            {
+                using (var img = Image.FromFile(tp))
+                using (var bmp = new Bitmap(img))
+                {
+                    var c = bmp.GetPixel(4, 4);
+                    /* Color.A 是 byte，和 int 直接比较会不相等，必须转 int */
+                    Eq("透明图 alpha = 0", (int)c.A, 0);
+                }
+            }
+            catch (Exception e)
+            {
+                Check("透明图可解码", false, e.Message);
+            }
+
+            /* 尺寸边界 */
+            byte[] big = IconMaker.Make(1, IconPattern.Grid, Color.Gray, Color.Black, 1, null);
+            Check("1×1 也能生成", big.Length > 0);
+            byte[] huge = IconMaker.Make(9999, IconPattern.Checker, Color.Gray, Color.Black, 8, null);
+            string hp = Path.Combine(_root, "icon_huge.png");
+            File.WriteAllBytes(hp, huge);
+            try
+            {
+                using (var img = Image.FromFile(hp))
+                    Eq("超大尺寸被夹到 4096", img.Width, 4096);
+            }
+            catch (Exception e)
+            {
+                Check("超大图可解码", false, e.Message);
+            }
+
+            /* 从现有图片缩放 */
+            string err;
+            byte[] resized = IconMaker.ResizeToPng(path, 128, out err);
+            Check("可以把图片缩放到指定尺寸", resized != null, err);
+            if (resized != null)
+            {
+                string rp = Path.Combine(_root, "icon_resized.png");
+                File.WriteAllBytes(rp, resized);
+                using (var img = Image.FromFile(rp))
+                {
+                    Eq("缩放后宽 = 128", img.Width, 128);
+                    Eq("缩放后高 = 128", img.Height, 128);
+                }
+            }
+        }
+
+        /* ============================================================ */
+        /* 13. 新建资源包骨架                                             */
+        /* ============================================================ */
+
+        private static void TestScaffold()
+        {
+            /* --- 旧格式（扁平化之前）--- */
+            string oldDir = Path.Combine(_root, "scaffold_old");
+            var optOld = new ScaffoldOptions
+            {
+                OutputDir = oldDir,
+                PackFormat = 3,
+                Description = "Old Style Pack",
+                Namespace = "mymod",
+                WithSamples = true,
+            };
+            var r1 = PackScaffold.Create(optOld, null);
+            Check("旧格式骨架创建成功", r1.Ok, r1.Error);
+            Check("生成了 pack.mcmeta", File.Exists(Path.Combine(oldDir, "pack.mcmeta")));
+            Check("旧格式用 textures/blocks",
+                Directory.Exists(Path.Combine(oldDir, "assets", "mymod", "textures", "blocks")));
+            Check("旧格式不建 items 目录",
+                !Directory.Exists(Path.Combine(oldDir, "assets", "mymod", "items")));
+            Check("默认生成了 pack.png", File.Exists(Path.Combine(oldDir, "pack.png")));
+
+            var reOld = PackAnalyzer.Analyze(oldDir);
+            Check("旧格式骨架可被重新分析", reOld.Ok, reOld.Error);
+            Eq("分析得到 pack_format 3", reOld.Format.PackFormat, 3);
+            Eq("描述写对了", reOld.Format.Description, "Old Style Pack");
+            Eq("命名空间识别为 mymod", string.Join(",", reOld.Namespaces.ToArray()), "mymod");
+            reOld.Cleanup();
+
+            /* --- 新格式（1.21.4+，应有 items 目录）--- */
+            string newDir = Path.Combine(_root, "scaffold_new");
+            var optNew = new ScaffoldOptions
+            {
+                OutputDir = newDir,
+                PackFormat = 46,
+                Description = "Modern Pack",
+                Namespace = "minecraft",
+                WithSamples = true,
+            };
+            var r2 = PackScaffold.Create(optNew, null);
+            Check("新格式骨架创建成功", r2.Ok, r2.Error);
+            Check("新格式用 textures/block",
+                Directory.Exists(Path.Combine(newDir, "assets", "minecraft", "textures", "block")));
+            Check("新格式建了 items 目录",
+                Directory.Exists(Path.Combine(newDir, "assets", "minecraft", "items")));
+
+            var reNew = PackAnalyzer.Analyze(newDir);
+            Check("新格式骨架可被重新分析", reNew.Ok, reNew.Error);
+            Eq("分析得到 pack_format 46", reNew.Format.PackFormat, 46);
+            reNew.Cleanup();
+
+            /* --- 目录判定函数 --- */
+            Check("pack_format 3 不用 items 目录", !PackScaffold.UsesItemsDir(3));
+            Check("pack_format 46 用 items 目录", PackScaffold.UsesItemsDir(46));
+            Eq("pack_format 3 的方块纹理目录", PackScaffold.BlockTextureDir(3), "blocks");
+            Eq("pack_format 15 的方块纹理目录", PackScaffold.BlockTextureDir(15), "block");
+
+            /* --- 拒绝把骨架建到已存在的非空目录上（会先备份）--- */
+            string occupied = Path.Combine(_root, "scaffold_busy");
+            Directory.CreateDirectory(occupied);
+            File.WriteAllText(Path.Combine(occupied, "keepme.txt"), "original");
+            var optBusy = new ScaffoldOptions { OutputDir = occupied, PackFormat = 15, WithSamples = false };
+            var r3 = PackScaffold.Create(optBusy, null);
+            Check("对已存在目录也能成功（先备份再替换）", r3.Ok, r3.Error);
+            Check("原内容已被新骨架替换", !File.Exists(Path.Combine(occupied, "keepme.txt")));
+            Check("替换后 pack.mcmeta 存在", File.Exists(Path.Combine(occupied, "pack.mcmeta")));
+        }
+
+        /* ============================================================ */
+        /* 14. 批量重命名                                                */
+        /* ============================================================ */
+
+        private static void TestRename()
+        {
+            string src = Path.Combine(_root, "rename_src");
+            BuildLegacyPack(src);
+
+            /* --- 查找替换（只改文件名）--- */
+            var rule = new RenameRule
+            {
+                Mode = RenameMode.FindReplace,
+                Scope = RenameScope.FileNameOnly,
+                Find = "stone",
+                Replace = "rock",
+            };
+            var plan = PackRenamer.Plan(src, rule, null);
+
+            Check("查找替换有命中", plan.ChangedCount > 0, plan.Describe());
+            Check("计划可执行（无冲突、无非法）", plan.CanApply, plan.Describe());
+
+            var hit = plan.Items.FirstOrDefault(i => i.From.EndsWith("stone.png"));
+            Check("stone.png 被改名为 rock.png", hit != null && hit.To.EndsWith("rock.png"),
+                hit != null ? hit.To : "(未命中)");
+            Check("扩展名没有被改动", hit != null && hit.To.EndsWith(".png"));
+            Check("目录部分没有被改动", hit != null && hit.To.StartsWith("assets/minecraft/textures/blocks/"));
+
+            /* 只替文件名：stone.json 也应命中 */
+            var jsonHit = plan.Items.FirstOrDefault(i => i.From.EndsWith("stone.json"));
+            Check("models/block/stone.json 也被改名", jsonHit != null && jsonHit.To.EndsWith("rock.json"));
+
+            /* --- 用正则 + 捕获组 --- */
+            var reRule = new RenameRule
+            {
+                Mode = RenameMode.FindReplace,
+                Scope = RenameScope.FileNameOnly,
+                Find = @"^(\w+)$",
+                Replace = "tex_$1",
+                UseRegex = true,
+            };
+            var rePlan = PackRenamer.Plan(src, reRule, null);
+            Check("正则捕获组生效",
+                rePlan.Items.Any(i => i.To.EndsWith("tex_stone.png")),
+                string.Join(",", rePlan.Items.Where(i => i.Changed).Take(3).Select(i => i.To).ToArray()));
+
+            /* --- 非法正则要报错而不是崩 --- */
+            var badRe = new RenameRule
+            {
+                Mode = RenameMode.FindReplace,
+                Find = "([unclosed",
+                Replace = "x",
+                UseRegex = true,
+            };
+            var badPlan = PackRenamer.Plan(src, badRe, null);
+            Check("非法正则不会抛异常，且被标为非法",
+                badPlan.InvalidCount > 0, badPlan.Describe());
+
+            /* --- 扩展名筛选 --- */
+            var extRule = new RenameRule
+            {
+                Mode = RenameMode.Prefix,
+                Prefix = "zz_",
+                ExtFilter = "png",
+            };
+            var extPlan = PackRenamer.Plan(src, extRule, null);
+            Check("扩展名筛选只命中 png",
+                extPlan.Items.Where(i => i.Changed).All(i => i.To.EndsWith(".png")),
+                string.Join(",", extPlan.Items.Where(i => i.Changed).Select(i => i.To).Take(3).ToArray()));
+            /* 非 png 的必须一个都没碰 —— 直接按扩展名统计，不依赖具体某个文件名 */
+            var changedExts = extPlan.Items.Where(i => i.Changed)
+                .Select(i => Path.GetExtension(i.To).ToLowerInvariant())
+                .Distinct().ToList();
+            Check("改名命中的全都是 .png",
+                changedExts.Count == 1 && changedExts[0] == ".png",
+                "实际出现的扩展名：" + string.Join(",", changedExts.ToArray()));
+
+            /*
+             * Plan 只收录「通过筛选」的文件，所以计划里不会出现未改动的项。
+             * 正确的验证方式是：计划中的文件必须是全部文件里扩展名为 png 的那个子集。
+             */
+            int allFiles = Directory.GetFiles(src, "*", SearchOption.AllDirectories).Length;
+            int pngFiles = Directory.GetFiles(src, "*.png", SearchOption.AllDirectories).Length;
+
+            Check("筛选后的计划只包含 png 文件", extPlan.Items.Count == pngFiles,
+                "计划 " + extPlan.Items.Count + " 个，实际 png " + pngFiles + " 个，全部文件 " + allFiles + " 个");
+            Check("筛选确实排除了非 png 文件", extPlan.Items.Count < allFiles,
+                allFiles + " 个文件里筛出 " + extPlan.Items.Count + " 个");
+
+            /* --- 加后缀要插在扩展名之前 --- */
+            var sufRule = new RenameRule { Mode = RenameMode.Suffix, Suffix = "_v2" };
+            var sufPlan = PackRenamer.Plan(src, sufRule, null);
+            Check("后缀插在扩展名之前",
+                sufPlan.Items.Any(i => i.To.EndsWith("_v2.png")),
+                string.Join(",", sufPlan.Items.Where(i => i.Changed).Select(i => i.To).Take(3).ToArray()));
+
+            /* --- 序号编号 --- */
+            var numRule = new RenameRule
+            {
+                Mode = RenameMode.Number,
+                NumberFormat = "{0:000}",
+                NumberStart = 1,
+                NumberStep = 1,
+                ExtFilter = "png",
+            };
+            var numPlan = PackRenamer.Plan(src, numRule, null);
+            Check("序号编号生成了 001 这样的名字",
+                numPlan.Items.Any(i => i.To.EndsWith("001.png")),
+                string.Join(",", numPlan.Items.Where(i => i.Changed).Select(i => i.To).Take(4).ToArray()));
+
+            /* --- 冲突检测：把所有文件改成同一个名字 --- */
+            var clashRule = new RenameRule
+            {
+                Mode = RenameMode.Number,
+                NumberFormat = "same",     // 不接受 {0}，所有文件都变成 same.<ext>
+                NumberStart = 1,
+                NumberStep = 0,
+            };
+            var clashPlan = PackRenamer.Plan(src, clashRule, null);
+            Check("同名冲突被检出", clashPlan.ConflictCount > 0, clashPlan.Describe());
+            Check("有冲突时不允许执行", !clashPlan.CanApply);
+
+            /* --- 实际执行一次 --- */
+            var applyRule = new RenameRule
+            {
+                Mode = RenameMode.FindReplace,
+                Scope = RenameScope.FileNameOnly,
+                Find = "stone",
+                Replace = "rock",
+            };
+            var applyPlan = PackRenamer.Plan(src, applyRule, null);
+            int expectChanged = applyPlan.ChangedCount;
+
+            string renameOut = Path.Combine(_root, "rename_out");
+
+            /* 先验证「输出不能等于输入」的拦截 —— 这正是原地覆盖的坑 */
+            var selfOut = PackRenamer.Execute(applyPlan, src, null);
+            Check("拒绝把改名输出写回源目录", !selfOut.Ok, selfOut.Error);
+
+            var report = PackRenamer.Execute(applyPlan, renameOut, null);
+            Check("改名执行成功", report.Ok, report.Error);
+            Check("输出目录已生成", Directory.Exists(report.OutputPath));
+            Check("源目录依然存在且未被改动",
+                File.Exists(Path.Combine(src, "assets", "minecraft", "textures", "blocks", "stone.png")));
+            Eq("实际改名的数量与计划一致", report.FileCount, Directory.GetFiles(src, "*", SearchOption.AllDirectories).Length);
+
+            Check("改名后的文件存在",
+                File.Exists(Path.Combine(report.OutputPath, "assets", "minecraft", "textures", "blocks", "rock.png")));
+            Check("原名字的文件已不在输出里",
+                !File.Exists(Path.Combine(report.OutputPath, "assets", "minecraft", "textures", "blocks", "stone.png")));
+
+            /* 文件总数不变 */
+            int before = Directory.GetFiles(src, "*", SearchOption.AllDirectories).Length;
+            int after = Directory.GetFiles(report.OutputPath, "*", SearchOption.AllDirectories).Length;
+            Eq("改名前后文件总数一致", after, before);
+
+            /* 内容没被改坏 */
+            string rockPath = Path.Combine(report.OutputPath, "assets", "minecraft", "textures", "blocks", "rock.png");
+            string stonePath = Path.Combine(src, "assets", "minecraft", "textures", "blocks", "stone.png");
+            Check("改名后内容字节一致",
+                File.ReadAllBytes(rockPath).SequenceEqual(File.ReadAllBytes(stonePath)));
+
+            /* 输出仍是一个合法资源包 */
+            var re = PackAnalyzer.Analyze(report.OutputPath);
+            Check("改名输出仍是可识别的资源包", re.Ok && re.PackMcmetaAtRoot, re.Error);
+            re.Cleanup();
+        }
+
         private static void BuildLegacyPack(string root)
         {
             if (Directory.Exists(root)) Directory.Delete(root, true);
