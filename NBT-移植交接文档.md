@@ -243,6 +243,19 @@ NBT 的**数据能力**（读写、编辑、查找、格式转换）已用 C# �
 外部 `Start-Process` 拉起界面并保持运行，命令会挂到超时。要自动截图就用程序自带的 `--shots`
 （它截完自己退出），不要外部拉起再截。
 
+### 6.5 PowerShell 5.1 的 `>` 会写成 UTF-16（导补丁时踩过）
+
+用 `git diff ... > x.patch` 生成补丁会得到一个 **UTF-16** 文件，`git apply` 会报
+「No valid patches in input」。要么走 cmd 的重定向（按字节写）：
+
+    cmd /c "git diff --binary origin/main...HEAD > out.patch"
+
+要么用 `.NET` 显式写 UTF-8：
+
+    [System.IO.File]::WriteAllText($p, (git diff --binary origin/main...HEAD | Out-String), (New-Object System.Text.UTF8Encoding($false)))
+
+另外导补丁要带 `--binary`，否则 `testnbt` 里的两个样本文件不会进补丁。
+
 ---
 
 ## 7. 已知问题与后续建议
