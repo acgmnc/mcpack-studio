@@ -528,6 +528,31 @@ namespace McPackStudio
             _statusRight.Text = moduleCount + " 个模块 / " + subCount + " 个子模块   ·   .NET " + Environment.Version;
         }
 
+        /// <summary>
+        /// 打开界面并直接进 NBT 编辑器载入指定文件。
+        /// 命令行长这样：MCPackStudio.exe --nbt "level.dat"
+        /// </summary>
+        public void OpenNbtFile(string path)
+        {
+            NavigateTo("nbt", "nbt.edit");
+
+            var page = FindNbtPage();
+            if (page == null) return;
+            page.OpenFile(path);
+        }
+
+        private NbtPage FindNbtPage()
+        {
+            if (_modules == null) return null;
+            foreach (var m in _modules)
+                foreach (var s in m.Subs)
+                {
+                    var page = s.Page as NbtPage;
+                    if (page != null) return page;
+                }
+            return null;
+        }
+
         public void Status(string text)
         {
             if (InvokeRequired) { BeginInvoke(new Action<string>(Status), text); return; }
@@ -797,8 +822,16 @@ namespace McPackStudio
             steps.Add(new KeyValuePair<string, Action>("05-pack-merge", () => NavigateTo("pack", "pack.merge")));
             steps.Add(new KeyValuePair<string, Action>("06-tools-version", () => NavigateTo("tools", "tools.version")));
             steps.Add(new KeyValuePair<string, Action>("07-tools-icon", () => NavigateTo("tools", "tools.icon")));
-            steps.Add(new KeyValuePair<string, Action>("08-settings-rules", () => NavigateTo("settings", "settings.rules")));
-            steps.Add(new KeyValuePair<string, Action>("09-settings-about", () => NavigateTo("settings", "settings.about")));
+            /* NBT 编辑器截图前先塞一个样本文件，空树看不出排版对不对 */
+            steps.Add(new KeyValuePair<string, Action>("08-nbt-edit", () =>
+            {
+                NavigateTo("nbt", "nbt.edit");
+                string sample = FindSampleNbt();
+                if (sample != null) OpenNbtFile(sample);
+            }));
+            steps.Add(new KeyValuePair<string, Action>("09-nbt-snbt", () => NavigateTo("nbt", "nbt.snbt")));
+            steps.Add(new KeyValuePair<string, Action>("10-settings-rules", () => NavigateTo("settings", "settings.rules")));
+            steps.Add(new KeyValuePair<string, Action>("11-settings-about", () => NavigateTo("settings", "settings.about")));
 
             /* 需要先打开资源包才有内容的页面。
                用仓库里的 testpack-1.12，看的是真实数据下的排版。 */
@@ -837,6 +870,29 @@ namespace McPackStudio
             }
         }
 
+        /// <summary>找仓库里自带的 NBT 样本（截图与手工验证都用它）</summary>
+        private static string FindSampleNbt()
+        {
+            try
+            {
+                string here = AppDomain.CurrentDomain.BaseDirectory;
+                /* exe 在 release 下，样本在仓库根的 testnbt 里 */
+                string[] candidates =
+                {
+                    Path.Combine(here, "..", "testnbt", "sample_java_level.dat"),
+                    Path.Combine(here, "testnbt", "sample_java_level.dat"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "testnbt", "sample_java_level.dat"),
+                };
+                foreach (string c in candidates)
+                {
+                    string full = Path.GetFullPath(c);
+                    if (File.Exists(full)) return full;
+                }
+            }
+            catch { }
+            return null;
+        }
+
         /// <summary>把示例资源包喂给当前页面（各页面自己认领）</summary>
         private void ApplyDemoPack(string path)
         {
@@ -873,14 +929,26 @@ namespace McPackStudio
             return null;
         }
 
-        /// <summary>把窗口当前画面存成 PNG（截屏而不是 WM_PRINT，自绘控件才有内容）</summary>
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool PrintWindow(IntPtr hwnd, IntPtr hdcBlt, uint flags);
+
+        /// <summary>PW_RENDERFULLCONTENT：让 DWM 把整窗内容（含自绘控件）渲染到位图</summary>
+        private const uint PW_RENDERFULLCONTENT = 0x00000002;
+
+        /// <summary>
+        /// 把窗口当前画面存成 PNG。
+        ///
+        /// 先用 PrintWindow 让窗口自己渲染一遍：它不挑前台焦点，别的窗口挡住也照样截得到，
+        /// 这正是「抓屏幕」做不到的（抓屏幕必须先 SetForegroundWindow，
+        /// 一旦被系统拒绝焦点，截出来的就是压在它上面的别的窗口）。
+        /// PrintWindow 失败（个别系统 / 远程桌面下会返回 false）再退回抓屏幕。
+        /// </summary>
         private void CaptureTo(string file)
         {
             try
             {
-                SetForegroundWindow(Handle);
-                Application.DoEvents();
-                System.Threading.Thread.Sleep(260);
+                int w = Math.Max(1, Width);
+                int h = Math.Max(1, Height);
 
                 /* 滚动条是延迟创建的系统子窗口，深色主题也是延迟补套的。
                    截图前再强制套一次并等它画完，否则截到的是还没上色的那一帧。 */
@@ -891,11 +959,29 @@ namespace McPackStudio
                     System.Threading.Thread.Sleep(30);
                 }
 
-                var r = new Rectangle(Left, Top, Width, Height);
-                using (var bmp = new Bitmap(Math.Max(1, r.Width), Math.Max(1, r.Height)))
+                using (var bmp = new Bitmap(w, h))
                 {
-                    using (var g = Graphics.FromImage(bmp))
-                        g.CopyFromScreen(r.Left, r.Top, 0, 0, new Size(r.Width, r.Height));
+                    bool captured = false;
+                    try
+                    {
+                        using (var g = Graphics.FromImage(bmp))
+                        {
+                            IntPtr hdc = g.GetHdc();
+                            try { captured = PrintWindow(Handle, hdc, PW_RENDERFULLCONTENT); }
+                            finally { g.ReleaseHdc(hdc); }
+                        }
+                    }
+                    catch { captured = false; }
+
+                    if (!captured)
+                    {
+                        SetForegroundWindow(Handle);
+                        Application.DoEvents();
+                        System.Threading.Thread.Sleep(260);
+                        using (var g = Graphics.FromImage(bmp))
+                            g.CopyFromScreen(Left, Top, 0, 0, new Size(w, h));
+                    }
+
                     bmp.Save(file, System.Drawing.Imaging.ImageFormat.Png);
                 }
             }

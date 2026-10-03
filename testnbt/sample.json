@@ -1,0 +1,71 @@
+{
+  "Data": {
+    "version": 19133,
+    "LevelName": "MCPack Studio 测试存档",
+    "LastPlayed": 1696000000000,
+    "GameType": 1,
+    "hardcore": 0,
+    "Difficulty": 2,
+    "allowCommands": 1,
+    "SpawnX": 128,
+    "SpawnY": 70,
+    "SpawnZ": -256,
+    "Time": 24000,
+    "DayTime": 12000,
+    "raining": 0,
+    "rainLevel": 0,
+    "Player": {
+      "Health": 20,
+      "foodLevel": 20,
+      "XpLevel": 12,
+      "Dimension": "minecraft:overworld",
+      "Pos": [
+        0.5,
+        64,
+        0.5
+      ],
+      "Inventory": [
+        {
+          "id": "minecraft:stone",
+          "Count": 64,
+          "Slot": 0
+        },
+        {
+          "id": "minecraft:diamond_sword",
+          "Count": 1,
+          "Slot": 1,
+          "Enchantments": [
+            {
+              "id": "minecraft:sharpness",
+              "lvl": 5
+            }
+          ]
+        }
+      ]
+    },
+    "GameRules": {
+      "doDaylightCycle": "true",
+      "keepInventory": "false"
+    },
+    "RandomBytes": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "BiomeSeed": [
+      12345,
+      -67890
+    ],
+    "ChunkKeys": [
+      0,
+      -1,
+      9.2233720368547758E+18
+    ],
+    "EmptyList": []
+  }
+}
