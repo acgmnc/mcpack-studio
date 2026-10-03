@@ -508,6 +508,31 @@ namespace McPackStudio
             _statusRight.Text = moduleCount + " 个模块 / " + subCount + " 个子模块   ·   .NET " + Environment.Version;
         }
 
+        /// <summary>
+        /// 打开界面并直接进 NBT 编辑器载入指定文件。
+        /// 命令行长这样：MCPackStudio.exe --nbt "level.dat"
+        /// </summary>
+        public void OpenNbtFile(string path)
+        {
+            NavigateTo("nbt", "nbt.edit");
+
+            var page = FindNbtPage();
+            if (page == null) return;
+            page.OpenFile(path);
+        }
+
+        private NbtPage FindNbtPage()
+        {
+            if (_modules == null) return null;
+            foreach (var m in _modules)
+                foreach (var s in m.Subs)
+                {
+                    var page = s.Page as NbtPage;
+                    if (page != null) return page;
+                }
+            return null;
+        }
+
         public void Status(string text)
         {
             if (InvokeRequired) { BeginInvoke(new Action<string>(Status), text); return; }
@@ -645,8 +670,16 @@ namespace McPackStudio
             steps.Add(new KeyValuePair<string, Action>("05-pack-merge", () => NavigateTo("pack", "pack.merge")));
             steps.Add(new KeyValuePair<string, Action>("06-tools-version", () => NavigateTo("tools", "tools.version")));
             steps.Add(new KeyValuePair<string, Action>("07-tools-icon", () => NavigateTo("tools", "tools.icon")));
-            steps.Add(new KeyValuePair<string, Action>("08-settings-rules", () => NavigateTo("settings", "settings.rules")));
-            steps.Add(new KeyValuePair<string, Action>("09-settings-about", () => NavigateTo("settings", "settings.about")));
+            /* NBT 编辑器截图前先塞一个样本文件，空树看不出排版对不对 */
+            steps.Add(new KeyValuePair<string, Action>("08-nbt-edit", () =>
+            {
+                NavigateTo("nbt", "nbt.edit");
+                string sample = FindSampleNbt();
+                if (sample != null) OpenNbtFile(sample);
+            }));
+            steps.Add(new KeyValuePair<string, Action>("09-nbt-snbt", () => NavigateTo("nbt", "nbt.snbt")));
+            steps.Add(new KeyValuePair<string, Action>("10-settings-rules", () => NavigateTo("settings", "settings.rules")));
+            steps.Add(new KeyValuePair<string, Action>("11-settings-about", () => NavigateTo("settings", "settings.about")));
 
             foreach (var step in steps)
             {
@@ -662,20 +695,73 @@ namespace McPackStudio
             }
         }
 
-        /// <summary>把窗口当前画面存成 PNG（截屏而不是 WM_PRINT，自绘控件才有内容）</summary>
+        /// <summary>找仓库里自带的 NBT 样本（截图与手工验证都用它）</summary>
+        private static string FindSampleNbt()
+        {
+            try
+            {
+                string here = AppDomain.CurrentDomain.BaseDirectory;
+                /* exe 在 release 下，样本在仓库根的 testnbt 里 */
+                string[] candidates =
+                {
+                    Path.Combine(here, "..", "testnbt", "sample_java_level.dat"),
+                    Path.Combine(here, "testnbt", "sample_java_level.dat"),
+                    Path.Combine(Directory.GetCurrentDirectory(), "testnbt", "sample_java_level.dat"),
+                };
+                foreach (string c in candidates)
+                {
+                    string full = Path.GetFullPath(c);
+                    if (File.Exists(full)) return full;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool PrintWindow(IntPtr hwnd, IntPtr hdcBlt, uint flags);
+
+        /// <summary>PW_RENDERFULLCONTENT：让 DWM 把整窗内容（含自绘控件）渲染到位图</summary>
+        private const uint PW_RENDERFULLCONTENT = 0x00000002;
+
+        /// <summary>
+        /// 把窗口当前画面存成 PNG。
+        ///
+        /// 先用 PrintWindow 让窗口自己渲染一遍：它不挑前台焦点，别的窗口挡住也照样截得到，
+        /// 这正是「抓屏幕」做不到的（之前必须先 SetForegroundWindow，一旦被系统拒绝焦点，
+        /// 截出来的就是压在它上面的别的窗口）。
+        /// PrintWindow 失败（个别系统/远程桌面下会返回 false）再退回抓屏幕。
+        /// </summary>
         private void CaptureTo(string file)
         {
             try
             {
-                SetForegroundWindow(Handle);
-                Application.DoEvents();
-                System.Threading.Thread.Sleep(260);
+                int w = Math.Max(1, Width);
+                int h = Math.Max(1, Height);
 
-                var r = new Rectangle(Left, Top, Width, Height);
-                using (var bmp = new Bitmap(Math.Max(1, r.Width), Math.Max(1, r.Height)))
+                using (var bmp = new Bitmap(w, h))
                 {
-                    using (var g = Graphics.FromImage(bmp))
-                        g.CopyFromScreen(r.Left, r.Top, 0, 0, new Size(r.Width, r.Height));
+                    bool captured = false;
+                    try
+                    {
+                        using (var g = Graphics.FromImage(bmp))
+                        {
+                            IntPtr hdc = g.GetHdc();
+                            try { captured = PrintWindow(Handle, hdc, PW_RENDERFULLCONTENT); }
+                            finally { g.ReleaseHdc(hdc); }
+                        }
+                    }
+                    catch { captured = false; }
+
+                    if (!captured)
+                    {
+                        SetForegroundWindow(Handle);
+                        Application.DoEvents();
+                        System.Threading.Thread.Sleep(260);
+                        using (var g = Graphics.FromImage(bmp))
+                            g.CopyFromScreen(Left, Top, 0, 0, new Size(w, h));
+                    }
+
                     bmp.Save(file, System.Drawing.Imaging.ImageFormat.Png);
                 }
             }

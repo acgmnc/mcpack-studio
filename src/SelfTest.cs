@@ -67,6 +67,12 @@ namespace McPackStudio
 
                 Section("14. 批量重命名");
                 TestRename();
+
+                Section("15. NBT 数据模型与 SNBT");
+                TestNbtModel();
+
+                Section("16. NBT 二进制读写");
+                TestNbtIo();
             }
             catch (Exception e)
             {
@@ -1255,6 +1261,317 @@ namespace McPackStudio
             Check("改名输出仍是可识别的资源包", re.Ok && re.PackMcmetaAtRoot, re.Error);
             re.Cleanup();
         }
+
+
+        /* ============================================================ */
+        /* 15. NBT 数据模型与 SNBT                                       */
+        /* ============================================================ */
+
+        /// <summary>造一棵覆盖全部类型的 NBT 树，二进制与文本两节测试共用</summary>
+        private static NbtCompound MakeSampleNbt()
+        {
+            var root = new NbtCompound("");
+            root.Add(new NbtByte("byteVal", -12));
+            root.Add(new NbtShort("shortVal", -3000));
+            root.Add(new NbtInt("intVal", -70000));
+            root.Add(new NbtLong("longVal", long.MinValue));
+            root.Add(new NbtFloat("floatVal", 1.5f));
+            root.Add(new NbtDouble("doubleVal", -2.25));
+            root.Add(new NbtString("str", "中文 \"quoted\" \n 换行"));
+            root.Add(new NbtByteArray("bytes", new byte[] { 0, 127, 255 }));
+            root.Add(new NbtIntArray("ints", new int[] { -1, 0, int.MaxValue }));
+            root.Add(new NbtLongArray("longs", new long[] { long.MinValue, long.MaxValue }));
+            root.Add(new NbtShortArray("shorts", new short[] { -1, 2 }));
+            root.Add(new NbtList("emptyList"));
+            var list = new NbtList("list", NbtType.Int);
+            list.Add(new NbtInt("", 1));
+            list.Add(new NbtInt("", 2));
+            root.Add(list);
+            var inner = new NbtCompound("inner");
+            inner.Add(new NbtString("name", "Steve"));
+            inner.Add(new NbtByte("hardcore", 1));
+            root.Add(inner);
+            return root;
+        }
+
+        private static void TestNbtModel()
+        {
+            var root = MakeSampleNbt();
+
+            /* ---- 深拷贝是「深」的 ---- */
+            var clone = (NbtCompound)root.Clone();
+            Check("克隆出来的树与原树相等", root.ValueEquals(clone));
+            ((NbtByte)clone.Get("byteVal")).Value = 99;
+            Check("改克隆不影响原树", !root.ValueEquals(clone));
+            Eq("原树的字节值没被改动", ((NbtByte)root.Get("byteVal")).Value, (sbyte)-12);
+
+            /* ---- 列表按第一个元素定型 ---- */
+            var typed = new NbtList("l");
+            Eq("空列表的元素类型是 TAG_End", typed.ElementType, NbtType.End);
+            typed.Add(new NbtInt("", 1));
+            Eq("加入整数后元素类型变成 TAG_Int", typed.ElementType, NbtType.Int);
+            bool rejected = false;
+            try { typed.Add(new NbtString("", "x")); }
+            catch (FormatException) { rejected = true; }
+            Check("往整数列表里加字符串会被拒绝", rejected);
+
+            /* ---- SNBT 往返 ---- */
+            string compact = NbtSnbt.Format(root);
+            NbtTag parsed;
+            string err;
+            Check("紧凑 SNBT 能被解析", NbtSnbt.TryParse(compact, out parsed, out err), err);
+            Check("紧凑 SNBT 往返后完全相等", parsed != null && root.ValueEquals(parsed));
+
+            string pretty = NbtSnbt.FormatPretty(root);
+            NbtTag parsed2;
+            Check("美化 SNBT 能被解析", NbtSnbt.TryParse(pretty, out parsed2, out err), err);
+            Check("美化 SNBT 往返后完全相等", parsed2 != null && root.ValueEquals(parsed2));
+
+            /* ---- 类型后缀 ---- */
+            NbtTag t;
+            Check("1b 解析成 TAG_Byte", NbtSnbt.TryParse("1b", out t, out err) && t.Type == NbtType.Byte, err);
+            Check("1s 解析成 TAG_Short", NbtSnbt.TryParse("1s", out t, out err) && t.Type == NbtType.Short, err);
+            Check("1 解析成 TAG_Int", NbtSnbt.TryParse("1", out t, out err) && t.Type == NbtType.Int, err);
+            Check("1L 解析成 TAG_Long", NbtSnbt.TryParse("1L", out t, out err) && t.Type == NbtType.Long, err);
+            Check("1.0f 解析成 TAG_Float", NbtSnbt.TryParse("1.0f", out t, out err) && t.Type == NbtType.Float, err);
+            Check("1.0 解析成 TAG_Double", NbtSnbt.TryParse("1.0", out t, out err) && t.Type == NbtType.Double, err);
+            Check("裸词解析成 TAG_String", NbtSnbt.TryParse("hello", out t, out err) && t.Type == NbtType.String, err);
+            Check("[B;1,2,3] 解析成字节数组", NbtSnbt.TryParse("[B;1,2,3]", out t, out err) && t.Type == NbtType.ByteArray, err);
+            Check("[I;1,2] 解析成整数数组", NbtSnbt.TryParse("[I;1,2]", out t, out err) && t.Type == NbtType.IntArray, err);
+            Check("[L;1L] 解析成长整数数组", NbtSnbt.TryParse("[L;1L]", out t, out err) && t.Type == NbtType.LongArray, err);
+            Check("long 最小值能解析", NbtSnbt.TryParse("-9223372036854775808L", out t, out err) && ((NbtLong)t).Value == long.MinValue, err);
+
+            /* ---- 错误要报出来而不是吞掉 ---- */
+            Check("括号不配对会报错", !NbtSnbt.TryParse("{a:1", out t, out err));
+            Check("缺冒号会报错", !NbtSnbt.TryParse("{a 1}", out t, out err));
+            Check("尾部多余内容会报错", !NbtSnbt.TryParse("{a:1} x", out t, out err));
+            Check("字节越界会报错", !NbtSnbt.TryParse("300b", out t, out err));
+
+            /* ---- 根名 ---- */
+            NbtCompound r2;
+            string rn2;
+            Check("带名字的根名能读出来", NbtSnbt.TryParseRoot("Level {a:1}", out r2, out rn2, out err) && rn2 == "Level", err);
+            Check("非复合根会被包一层", NbtSnbt.TryParseRoot("[1,2]", out r2, out rn2, out err) && r2.Children.Count == 1, err);
+
+            /* ---- 路径 ---- */
+            Eq("根路径", "/", NbtWalk.PathOf(root, root));
+            Eq("复合子项路径", "/inner/name", NbtWalk.PathOf(root, ((NbtCompound)root.Get("inner")).Get("name")));
+            Eq("列表元素路径", "/list[1]", NbtWalk.PathOf(root, ((NbtList)root.Get("list")).Items[1]));
+            int nodes = 0;
+            foreach (var spot in NbtWalk.All(root)) nodes++;
+            Eq("遍历出的节点数", nodes, NbtEditOps.CountNodes(root));
+
+            /* ---- 查找 ---- */
+            var rule = new NbtSearchRule();
+            rule.NamePattern = "*Val";
+            rule.NameMode = NbtMatchMode.Wildcard;
+            Eq("通配符 *Val 命中 6 项（byte/short/int/long/float/double）", NbtSearch.FindAll(root, rule, 0).Count, 6);
+            rule.NamePattern = "^byte.*$";
+            rule.NameMode = NbtMatchMode.Regex;
+            Eq("正则 ^byte.*$ 命中 2 项", NbtSearch.FindAll(root, rule, 0).Count, 2);
+            rule.NamePattern = "";
+            rule.NameMode = NbtMatchMode.Wildcard;
+            rule.FilterByType = true;
+            rule.Type = NbtType.String;
+            Eq("按类型找字符串命中 2 项", NbtSearch.FindAll(root, rule, 0).Count, 2);
+            rule.FilterByType = false;
+            rule.ValueCompare = NbtValueCompare.Greater;
+            rule.ValueText = "0";
+            Eq("按值大于 0 命中 4 项", NbtSearch.FindAll(root, rule, 0).Count, 4);
+            rule.ValueCompare = NbtValueCompare.Contains;
+            rule.ValueText = "Steve";
+            Eq("按值包含 Steve 命中 1 项", NbtSearch.FindAll(root, rule, 0).Count, 1);
+
+            /* ---- 撤销重做 ---- */
+            var history = new NbtHistory();
+            var doc = MakeSampleNbt();
+            history.Push(doc, "");
+            ((NbtByte)doc.Get("byteVal")).Value = 5;
+            NbtCompound cur = doc;
+            string curName = "";
+            Check("撤销能把值还原", history.Undo(ref cur, ref curName) && ((NbtByte)cur.Get("byteVal")).Value == (sbyte)-12);
+            Check("重做能回到改动后", history.Redo(ref cur, ref curName) && ((NbtByte)cur.Get("byteVal")).Value == (sbyte)5);
+
+            var history2 = new NbtHistory();
+            history2.Push(cur, "");
+            history2.PopLast();
+            Check("PopLast 之后撤销栈为空", !history2.CanUndo && !history2.CanRedo);
+
+            /* ---- 编辑操作 ---- */
+            var parent = new NbtCompound("p");
+            parent.Add(new NbtInt("a", 1));
+            Eq("重名会自动加后缀", NbtEditOps.UniqueName(parent, "a"), "a_2");
+            Eq("没重名时不加后缀", NbtEditOps.UniqueName(parent, "b"), "b");
+
+            var intList = new NbtList("l", NbtType.Int);
+            intList.Add(new NbtInt("", 1));
+            intList.Add(new NbtInt("", 2));
+            parent.Add(intList);
+
+            var spot2 = new NbtSpot { Tag = intList.Items[1], ParentList = intList, Index = 1 };
+            Check("能把列表项上移", NbtEditOps.MoveUp(spot2));
+            Eq("上移后的顺序", ((NbtInt)intList.Items[0]).Value, 2);
+            Check("能把列表项下移", NbtEditOps.MoveDown(spot2));
+            Eq("下移后的顺序", ((NbtInt)intList.Items[0]).Value, 1);
+            Check("已在最前面时上移返回 false", !NbtEditOps.MoveUp(new NbtSpot { Tag = intList.Items[0], ParentList = intList, Index = 0 }));
+
+            string reason;
+            Check("整数能粘进整数列表", NbtEditOps.CanPaste(intList, new NbtInt("", 7), out reason), reason);
+            Check("字符串不能粘进整数列表", !NbtEditOps.CanPaste(intList, new NbtString("", "x"), out reason));
+            Check("标量上不能粘贴", !NbtEditOps.CanPaste(new NbtInt("s", 1), new NbtInt("", 1), out reason));
+
+            /* ---- JSON 导出 ---- */
+            string json = NbtJson.Write(root, true);
+            JsonValue jv;
+            string jerr;
+            Check("导出的 JSON 能被自家解析器读回", Json.TryParse(json, out jv, out jerr), jerr);
+            Check("JSON 里数字仍是数字", jv != null && jv.Get("intVal").IsNumber);
+            Check("JSON 里数组仍是数组", jv != null && jv.Get("bytes").IsArray);
+        }
+
+        /* ============================================================ */
+        /* 16. NBT 二进制读写                                            */
+        /* ============================================================ */
+
+        private static void TestNbtIo()
+        {
+            string dir = Path.Combine(_root, "nbt");
+            Directory.CreateDirectory(dir);
+
+            var root = MakeSampleNbt();
+            var doc = new NbtDocument
+            {
+                Root = root,
+                RootName = "Level",
+                Compression = NbtCompression.GZip,
+                LittleEndian = false,
+                HasBedrockHeader = false,
+                BedrockVersion = 9,
+            };
+
+            /* ---- 大端内存往返（不落盘） ---- */
+            byte[] payload = NbtIo.Serialize(root, "Level", false);
+            string rootName;
+            var parsed = NbtIo.Deserialize(payload, 0, payload.Length, false, out rootName);
+            Check("大端序列化后能解析回来", parsed != null);
+            Eq("大端序列化保留了根名", rootName, "Level");
+            Check("大端往返内容完全一致", parsed != null && parsed.ValueEquals(root));
+
+            byte[] payloadLe = NbtIo.Serialize(root, "Level", true);
+            var parsedLe = NbtIo.Deserialize(payloadLe, 0, payloadLe.Length, true, out rootName);
+            Check("小端往返内容完全一致", parsedLe != null && parsedLe.ValueEquals(root));
+            Check("大端与小端字节不同", !payload.SequenceEqual(payloadLe));
+
+            /* ---- gzip 文件往返 ---- */
+            string gz = Path.Combine(dir, "level_gzip.dat");
+            NbtIo.Save(doc, gz, NbtCompression.GZip, false, false);
+            var backGz = NbtIo.Load(gz);
+            Check("gzip 文件往返内容一致", backGz.Root.ValueEquals(root));
+            Eq("gzip 压缩方式被识别", backGz.Compression, NbtCompression.GZip);
+            Check("gzip 没被误认成小端", !backGz.LittleEndian);
+            byte[] gzHead = File.ReadAllBytes(gz);
+            Check("gzip 文件头是 1F 8B", gzHead.Length > 2 && gzHead[0] == 0x1F && gzHead[1] == 0x8B);
+
+            /* ---- zlib 文件往返（.NET 的 DeflateStream 不认 zlib 头，容易踩坑） ---- */
+            string zl = Path.Combine(dir, "level_zlib.dat");
+            NbtIo.Save(doc, zl, NbtCompression.Zlib, false, false);
+            var backZl = NbtIo.Load(zl);
+            Check("zlib 文件往返内容一致", backZl.Root.ValueEquals(root));
+            Eq("zlib 压缩方式被识别", backZl.Compression, NbtCompression.Zlib);
+            byte[] zlHead = File.ReadAllBytes(zl);
+            Check("zlib 文件头是 78 9C", zlHead.Length > 2 && zlHead[0] == 0x78 && zlHead[1] == 0x9C);
+
+            /* ---- 不压缩 ---- */
+            string raw = Path.Combine(dir, "level_raw.dat");
+            NbtIo.Save(doc, raw, NbtCompression.None, false, false);
+            var backRaw = NbtIo.Load(raw);
+            Check("不压缩往返内容一致", backRaw.Root.ValueEquals(root));
+            Eq("不压缩被识别", backRaw.Compression, NbtCompression.None);
+
+            /* ---- 基岩版：8 字节头 + 小端 ---- */
+            string bed = Path.Combine(dir, "bedrock_level.dat");
+            var bedrockDoc = new NbtDocument
+            {
+                Root = root,
+                RootName = "Level",
+                Compression = NbtCompression.None,
+                LittleEndian = true,
+                HasBedrockHeader = true,
+                BedrockVersion = 9,
+            };
+            NbtIo.Save(bedrockDoc, bed, NbtCompression.None, true, true);
+            var backBed = NbtIo.Load(bed);
+            Check("基岩版文件往返内容一致", backBed.Root.ValueEquals(root));
+            Check("基岩版被认出小端", backBed.LittleEndian);
+            Check("基岩版 8 字节头被认出", backBed.HasBedrockHeader);
+            Eq("基岩版版本号保留", backBed.BedrockVersion, 9);
+
+            /* ---- 写坏数据要报错，不能死循环 ---- */
+            bool threw = false;
+            try { NbtIo.Deserialize(new byte[] { 0x0A, 0x00 }, 0, 2, false, out rootName); }
+            catch (Exception) { threw = true; }
+            Check("截断的数据会抛异常", threw);
+
+            threw = false;
+            try
+            {
+                /* 声称有一个 300 字节长的字符串，实际没有 */
+                byte[] bad = new byte[] { 0x0A, 0x00, 0x00, 0x08, 0x00, 0x01, 0x61, 0x01, 0x2C, 0x00 };
+                NbtIo.Deserialize(bad, 0, bad.Length, false, out rootName);
+            }
+            catch (Exception) { threw = true; }
+            Check("字符串长度越界会抛异常", threw);
+
+            /* ---- 手工构造的已知字节：证明不是「自己写自己读」的假通过 ---- */
+            /* 0A 00 01 61  => 根：TAG_Compound，名字长度 1，名字 "a"
+               09 00 01 62  => 子项：TAG_List，名字长度 1，名字 "b"
+               01 00 00 00 02 => 元素类型 TAG_Byte，2 个元素
+               05 07        => 两个字节 5 和 7
+               00           => 根结束 */
+            byte[] known = new byte[]
+            {
+                0x0A, 0x00, 0x01, 0x61,
+                0x09, 0x00, 0x01, 0x62,
+                0x01, 0x00, 0x00, 0x00, 0x02,
+                0x05, 0x07,
+                0x00
+            };
+            string knownName;
+            var knownTree = NbtIo.Deserialize(known, 0, known.Length, false, out knownName);
+            Eq("手工样本的根名", knownName, "a");
+            Check("手工样本的根是复合标签", knownTree != null && knownTree.Children.Count == 1);
+            if (knownTree != null && knownTree.Children.Count == 1)
+            {
+                var kl = knownTree.Children[0] as NbtList;
+                Check("手工样本的子项是列表", kl != null);
+                if (kl != null)
+                {
+                    Eq("手工样本的列表元素类型", kl.ElementType, NbtType.Byte);
+                    Eq("手工样本的列表长度", kl.Items.Count, 2);
+                    Eq("手工样本的第一个元素", ((NbtByte)kl.Items[0]).Value, (sbyte)5);
+                    Eq("手工样本的第二个元素", ((NbtByte)kl.Items[1]).Value, (sbyte)7);
+                }
+            }
+
+            /* ---- SNBT 与二进制串起来：文本改完存成文件再读 ---- */
+            NbtCompound textRoot;
+            string textRootName;
+            string terr;
+            Check("SNBT 能解析成根", NbtSnbt.TryParseRoot("Level {Data:{version:19133},List:[1L,2L]}", out textRoot, out textRootName, out terr), terr);
+            string textFile = Path.Combine(dir, "from_text.dat");
+            var textDoc = new NbtDocument
+            {
+                Root = textRoot,
+                RootName = textRootName,
+                Compression = NbtCompression.GZip,
+                LittleEndian = false,
+            };
+            NbtIo.Save(textDoc, textFile, NbtCompression.GZip, false, false);
+            var backText = NbtIo.Load(textFile);
+            Eq("文本转文件后根名保留", backText.RootName, "Level");
+            Check("文本转文件后结构与文本一致", backText.Root.ValueEquals(textRoot));
+        }
+
 
         private static void BuildLegacyPack(string root)
         {

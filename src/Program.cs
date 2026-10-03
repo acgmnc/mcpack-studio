@@ -13,6 +13,8 @@ namespace McPackStudio
         public static string SizeProbeFile;
         /// <summary>调试用：--shots &lt;目录&gt; 会把每个页面的截图写进这个目录</summary>
         public static string ShotDir;
+        /// <summary>--nbt &lt;文件&gt; 会把界面直接开到 NBT 编辑器并载入这个文件</summary>
+        public static string NbtPreloadFile;
 
         [DllImport("kernel32.dll")]
         private static extern bool AttachConsole(int processId);
@@ -105,6 +107,12 @@ namespace McPackStudio
                         i++;
                         continue;
                     }
+                    if (args[i] == "--nbt" && i + 1 < args.Length)
+                    {
+                        NbtPreloadFile = args[i + 1];
+                        i++;
+                        continue;
+                    }
                     if (!string.IsNullOrEmpty(args[i]) && !args[i].StartsWith("--", StringComparison.Ordinal) && preload == null)
                     {
                         preload = args[i];
@@ -117,6 +125,12 @@ namespace McPackStudio
             {
                 string captured = preload;
                 shell.Shown += (s, e) => shell.OpenSourceFile(captured);
+            }
+
+            if (!string.IsNullOrEmpty(NbtPreloadFile))
+            {
+                string capturedNbt = NbtPreloadFile;
+                shell.Shown += (s, e) => shell.OpenNbtFile(capturedNbt);
             }
 
             if (!string.IsNullOrEmpty(SizeProbeFile))
@@ -168,6 +182,8 @@ namespace McPackStudio
             Console.WriteLine("  MCPackStudio.exe --convert MyPack --to 1.20.1 --out MyPack_1.20.1");
             Console.WriteLine("  MCPackStudio.exe --convert MyPack.zip --to 46 --out New.zip --zip");
             Console.WriteLine("  MCPackStudio.exe --analyze MyPack");
+            Console.WriteLine();
+            Console.WriteLine("  MCPackStudio.exe --nbt <文件>            打开界面并直接载入这个 NBT 文件");
             Console.WriteLine();
             Console.WriteLine("  MCPackStudio.exe --selftest [输出文件]   运行内置自测");
         }
