@@ -22,10 +22,11 @@ namespace McPackStudio
 
         private Control _view;
 
-        private ComboBox _pattern, _size;
+        private FlatSelect _pattern, _size;
         private NumericUpDown _gridStep, _bulkCount;
         private Panel _swatch, _swatch2;
-        private TextBox _outBox, _log, _importBox;
+        private TextBox _outBox, _importBox;
+        private RichTextBox _log;
         private PictureBox _preview;
         private FlatBtn _genBtn, _bulkBtn, _importBtn;
         private Label _sizeInfo;
@@ -72,8 +73,8 @@ namespace McPackStudio
             /* 左列参数 */
             var left = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
 
-            _pattern = new ComboBox { Dock = DockStyle.Left, Width = 220 };
-            Ui.StyleCombo(_pattern);
+            _pattern = new FlatSelect { Dock = DockStyle.Left, Width = 220 };
+            Ui.StyleSelect(_pattern);
             _pattern.Items.Add("资源包图标（圆角 + 横带）");
             _pattern.Items.Add("纯色");
             _pattern.Items.Add("透明（全空）");
@@ -85,8 +86,8 @@ namespace McPackStudio
             var rowP = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = Color.Transparent };
             rowP.Controls.Add(_pattern);
 
-            _size = new ComboBox { Dock = DockStyle.Left, Width = 140 };
-            Ui.StyleCombo(_size);
+            _size = new FlatSelect { Dock = DockStyle.Left, Width = 140 };
+            Ui.StyleSelect(_size);
             foreach (int s in new[] { 16, 32, 64, 128, 256, 512 })
                 _size.Items.Add(s + " × " + s);
             _size.SelectedIndex = 2;   // 64
@@ -296,7 +297,6 @@ namespace McPackStudio
                     Status("原有 pack.png 已备份为 " + Path.GetFileName(bak));
                 }
 
-                int size;
                 byte[] png = IconMaker.Make(64, IconPattern.PackIcon, _c1, _c2, (int)_gridStep.Value, null);
                 File.WriteAllBytes(target, png);
                 Status("已写入 pack.png（64×64）：" + target);

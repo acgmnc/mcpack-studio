@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -21,9 +21,10 @@ namespace McPackStudio
 
         private Control _view;
         private TextBox _dirBox, _nameBox, _descBox;
-        private ComboBox _nsBox, _verCombo;
+        private TextBox _nsBox;
+        private FlatSelect _verCombo;
         private ToolCheck _cTex, _cBlock, _cItem, _cModel, _cLang, _cSound, _cItems, _cIcon, _cSamples;
-        private TextBox _preview;
+        private RichTextBox _preview;
         private FlatBtn _createBtn;
         private Label _hint;
         private int _iconColor = Color.FromArgb(88, 132, 255).ToArgb();
@@ -89,12 +90,17 @@ namespace McPackStudio
             var row2 = new Panel { Dock = DockStyle.Top, Height = 26, BackColor = Color.Transparent };
             row2.Controls.Add(_nameBox);
 
-            _nsBox = new ComboBox { Dock = DockStyle.Left, Width = 220 };
-            Ui.StyleCombo(_nsBox);
-            _nsBox.Items.Add("minecraft");
-            _nsBox.Items.Add("mymod");
-            _nsBox.DropDownStyle = ComboBoxStyle.DropDown;
-            _nsBox.Text = "minecraft";
+            /* 命名空间允许自由输入（不只是下拉里那几个），所以用 TextBox */
+            _nsBox = new TextBox
+            {
+                Dock = DockStyle.Left,
+                Width = 220,
+                Text = "minecraft",
+                BackColor = Theme.BgInput,
+                ForeColor = Theme.Fg,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = Theme.F(9.5f),
+            };
             _nsBox.TextChanged += (s, e) => RefreshPreview();
             var row3 = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = Color.Transparent };
             row3.Controls.Add(_nsBox);
@@ -112,8 +118,8 @@ namespace McPackStudio
             var row4 = new Panel { Dock = DockStyle.Top, Height = 26, BackColor = Color.Transparent };
             row4.Controls.Add(_descBox);
 
-            _verCombo = new ComboBox { Dock = DockStyle.Left, Width = 400 };
-            Ui.StyleCombo(_verCombo);
+            _verCombo = new FlatSelect { Dock = DockStyle.Left, Width = 400 };
+            Ui.StyleSelect(_verCombo);
             foreach (var v in Settings.DisplayVersions().OrderByDescending(x => x.Format))
                 _verCombo.Items.Add(new ComboItem
                 {

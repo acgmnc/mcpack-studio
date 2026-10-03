@@ -102,6 +102,15 @@ namespace McPackStudio
                否则深色界面上会露出白色滚动条和浅色标题栏 */
             DarkMode.Apply(this);
 
+            /* 任何控件被加进来时都补一次深色主题。
+               滚动条是延迟创建的子窗口，不主动套用就会保持系统浅色。 */
+            ControlAdded += (s, e) =>
+            {
+                var c = e.Control;
+                if (c == null || !c.IsHandleCreated) return;
+                DarkMode.ApplyThemeToTree(c.Handle, 0);
+            };
+
             DragEnter += (s, e) =>
             {
                 if (e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop)) e.Effect = DragDropEffects.Copy;
@@ -209,7 +218,18 @@ namespace McPackStudio
             /* Bounds 改了但 Dock 属性还留着，强制重排一次让子控件跟上，
                这样 _contentHost.ClientSize 立刻就是最终值。 */
             PerformLayout();
+
+            /* 页面尺寸一变，原生滚动条就可能出现/消失。它出现之后会按系统
+               浅色画一遍，必须等这次消息处理完再补套一次深色主题，
+               否则就会留下一条白杠。限制次数，避免每帧都递归枚举子窗口。 */
+            if (_darkRefreshes < 12)
+            {
+                _darkRefreshes++;
+                DarkMode.ApplyDeferred(this, 3);
+            }
         }
+
+        private int _darkRefreshes;
 
         protected override void OnLayout(LayoutEventArgs levent)
         {
@@ -651,6 +671,138 @@ namespace McPackStudio
             catch { }
         }
 
+        /// <summary>
+        /// 调试用：依次给界面套用几个候选的深色主题名，各截一张图。
+        /// 用来实测哪个主题名真能把系统滚动条压成深色。
+        /// --theme-test &lt;目录&gt; 触发。
+        /// </summary>
+        public void RunThemeTest(string dir)
+        {
+            try { Directory.CreateDirectory(dir); } catch { }
+
+            /* 页面上有原生滚动条（多行 TextBox 的竖向滚动条）才有意义 */
+            NavigateTo("settings", "settings.about");
+            for (int i = 0; i < 12; i++) { Application.DoEvents(); System.Threading.Thread.Sleep(40); }
+
+            var variants = new[]
+            {
+                "edit=space",      // 跳过 EDIT，套空主题
+                "edit=theme",      // 跳过 EDIT，套工作主题
+                "edit=skip",       // 连 EDIT 的子窗口一起跳过，保持系统默认
+                "theme=DarkMode_Explorer,edit=space",
+            };
+
+            foreach (string v in variants)
+            {
+                DarkMode.EditMode = v;
+                DarkMode.ApplyThemeToTree(Handle, 0);
+                LayoutRegions();
+                LayoutCurrentPage();
+                Invalidate(true);
+                for (int i = 0; i < 16; i++) { Application.DoEvents(); System.Threading.Thread.Sleep(30); }
+
+                CaptureTo(Path.Combine(dir, v.Replace("=", "-").Replace(",", "_") + ".png"));
+            }
+
+            DarkMode.EditMode = "edit=space";
+        }
+
+        /// <summary>切到截图用的那个「有滚动条」的页面，不重复截整轮</summary>
+        private void RunShotSequenceNavOnly()
+        {
+            NavigateTo("settings", "settings.about");
+            for (int i = 0; i < 12; i++)
+            {
+                Application.DoEvents();
+                System.Threading.Thread.Sleep(40);
+            }
+        }
+
+        /// <summary>
+        /// 调试用：把 FlatSelect 单独放到一个新窗口里，用来确认展开列表能不能正常工作
+        /// （不受主界面坐标换算干扰）。--select-test &lt;目录&gt;
+        /// </summary>
+        public void RunSelectTest(string dir)
+        {
+            try { Directory.CreateDirectory(dir); } catch { }
+
+            var f = new Form
+            {
+                Text = "FlatSelect 单测",
+                ClientSize = new Size(520, 260),
+                StartPosition = FormStartPosition.CenterScreen,
+                BackColor = Theme.BgBase,
+            };
+
+            var info = new Label
+            {
+                Dock = DockStyle.Bottom,
+                Height = 40,
+                ForeColor = Theme.FgMuted,
+                Font = Theme.F(9f),
+                Text = "初始状态",
+                Padding = new Padding(10, 0, 0, 0),
+            };
+
+            var sel = new FlatSelect { Left = 30, Top = 40, Width = 360 };
+            sel.DropDownWidth = 520;
+            sel.SelectedIndexChanged += (s, e) =>
+            {
+                var it = sel.SelectedItem as ComboItem;
+                info.Text = "已选中 index=" + sel.SelectedIndex + "  format=" + (it == null ? -1 : it.Format);
+            };
+
+            foreach (var v in Settings.DisplayVersions().OrderByDescending(x => x.Format).Take(12))
+            {
+                sel.Items.Add(new ComboItem
+                {
+                    Format = v.Format,
+                    Text = "pack_format " + v.Format + "   " + Settings.Describe(v),
+                });
+            }
+            if (sel.Items.Count > 0) sel.SelectedIndex = 0;
+
+            f.Controls.Add(info);
+            f.Controls.Add(sel);
+            f.Show();
+
+            var steps = new List<KeyValuePair<string, Action>>();
+            steps.Add(new KeyValuePair<string, Action>("01-initial", () => { }));
+            steps.Add(new KeyValuePair<string, Action>("02-dropdown-open", () => sel.OpenDropDownForTest()));
+            steps.Add(new KeyValuePair<string, Action>("03-select-4th", () => sel.SetIndexForTest(3)));
+            steps.Add(new KeyValuePair<string, Action>("04-closed", () => sel.CloseDropDownForTest()));
+
+            foreach (var step in steps)
+            {
+                Application.DoEvents();
+                step.Value();
+                for (int i = 0; i < 14; i++)
+                {
+                    Application.DoEvents();
+                    System.Threading.Thread.Sleep(40);
+                }
+                CaptureWindow(f, Path.Combine(dir, step.Key + ".png"));
+            }
+
+            f.Close();
+        }
+
+        /// <summary>截一个窗口（可以用来看自绘控件的实际渲染）</summary>
+        private static void CaptureWindow(Form f, string file)
+        {
+            try
+            {
+                var r = new Rectangle(f.Left, f.Top, f.Width, f.Height);
+                using (var bmp = new Bitmap(Math.Max(1, r.Width), Math.Max(1, r.Height)))
+                {
+                    using (var g = Graphics.FromImage(bmp))
+                        g.CopyFromScreen(r.Left, r.Top, 0, 0, new Size(r.Width, r.Height));
+                    bmp.Save(file, System.Drawing.Imaging.ImageFormat.Png);
+                }
+            }
+            catch { }
+        }
+
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -680,6 +832,29 @@ namespace McPackStudio
             steps.Add(new KeyValuePair<string, Action>("09-nbt-snbt", () => NavigateTo("nbt", "nbt.snbt")));
             steps.Add(new KeyValuePair<string, Action>("10-settings-rules", () => NavigateTo("settings", "settings.rules")));
             steps.Add(new KeyValuePair<string, Action>("11-settings-about", () => NavigateTo("settings", "settings.about")));
+
+            /* 需要先打开资源包才有内容的页面。
+               用仓库里的 testpack-1.12，看的是真实数据下的排版。 */
+            string pack = FindDemoPack();
+            if (!string.IsNullOrEmpty(pack))
+            {
+                steps.Add(new KeyValuePair<string, Action>("10-browse", () =>
+                {
+                    NavigateTo("pack", "pack.browse");
+                    ApplyDemoPack(pack);
+                }));
+                steps.Add(new KeyValuePair<string, Action>("11-meta", () =>
+                {
+                    NavigateTo("pack", "pack.meta");
+                    ApplyDemoPack(pack);
+                }));
+                steps.Add(new KeyValuePair<string, Action>("12-rename", () =>
+                {
+                    NavigateTo("pack", "pack.rename");
+                    ApplyDemoPack(pack);
+                }));
+                steps.Add(new KeyValuePair<string, Action>("13-new", () => NavigateTo("pack", "pack.new")));
+            }
 
             foreach (var step in steps)
             {
@@ -718,6 +893,42 @@ namespace McPackStudio
             return null;
         }
 
+        /// <summary>把示例资源包喂给当前页面（各页面自己认领）</summary>
+        private void ApplyDemoPack(string path)
+        {
+            var cur = _currentSub;
+            if (cur == null || cur.Page == null) return;
+
+            var conv = cur.Page as ConvertPage;
+            if (conv != null) { conv.PreloadSource(path); return; }
+
+            var browse = cur.Page as PackBrowsePage;
+            if (browse != null) { browse.PreloadSource(path); return; }
+
+            var meta = cur.Page as PackMetaPage;
+            if (meta != null) { meta.PreloadSource(path); return; }
+
+            var rename = cur.Page as PackRenamePage;
+            if (rename != null) { rename.PreloadSource(path); return; }
+        }
+
+        /// <summary>找一个示例资源包：优先仓库里的 testpack-1.12</summary>
+        private static string FindDemoPack()
+        {
+            try
+            {
+                string root = AppDomain.CurrentDomain.BaseDirectory;
+                for (int i = 0; i < 4 && !string.IsNullOrEmpty(root); i++)
+                {
+                    string p = Path.Combine(root, "testpack-1.12");
+                    if (Directory.Exists(p) && File.Exists(Path.Combine(p, "pack.mcmeta"))) return p;
+                    root = Path.GetDirectoryName(root.TrimEnd(Path.DirectorySeparatorChar));
+                }
+            }
+            catch { }
+            return null;
+        }
+
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool PrintWindow(IntPtr hwnd, IntPtr hdcBlt, uint flags);
 
@@ -728,9 +939,9 @@ namespace McPackStudio
         /// 把窗口当前画面存成 PNG。
         ///
         /// 先用 PrintWindow 让窗口自己渲染一遍：它不挑前台焦点，别的窗口挡住也照样截得到，
-        /// 这正是「抓屏幕」做不到的（之前必须先 SetForegroundWindow，一旦被系统拒绝焦点，
-        /// 截出来的就是压在它上面的别的窗口）。
-        /// PrintWindow 失败（个别系统/远程桌面下会返回 false）再退回抓屏幕。
+        /// 这正是「抓屏幕」做不到的（抓屏幕必须先 SetForegroundWindow，
+        /// 一旦被系统拒绝焦点，截出来的就是压在它上面的别的窗口）。
+        /// PrintWindow 失败（个别系统 / 远程桌面下会返回 false）再退回抓屏幕。
         /// </summary>
         private void CaptureTo(string file)
         {
@@ -738,6 +949,15 @@ namespace McPackStudio
             {
                 int w = Math.Max(1, Width);
                 int h = Math.Max(1, Height);
+
+                /* 滚动条是延迟创建的系统子窗口，深色主题也是延迟补套的。
+                   截图前再强制套一次并等它画完，否则截到的是还没上色的那一帧。 */
+                DarkMode.ApplyThemeToTree(Handle, 0);
+                for (int i = 0; i < 10; i++)
+                {
+                    Application.DoEvents();
+                    System.Threading.Thread.Sleep(30);
+                }
 
                 using (var bmp = new Bitmap(w, h))
                 {

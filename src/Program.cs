@@ -15,6 +15,10 @@ namespace McPackStudio
         public static string ShotDir;
         /// <summary>--nbt &lt;文件&gt; 会把界面直接开到 NBT 编辑器并载入这个文件</summary>
         public static string NbtPreloadFile;
+        /// <summary>调试用：--theme-test &lt;目录&gt; 会实测几个候选深色主题名</summary>
+        public static string ThemeTestDir;
+        /// <summary>调试用：--select-test &lt;目录&gt; 单独验证 FlatSelect 的展开与选择</summary>
+        public static string SelectTestDir;
 
         [DllImport("kernel32.dll")]
         private static extern bool AttachConsole(int processId);
@@ -29,7 +33,8 @@ namespace McPackStudio
         private static void Main(string[] args)
         {
             bool consoleMode = args != null && args.Length > 0
-                && (args[0] == "--convert" || args[0] == "--selftest" || args[0] == "--help");
+                && (args[0] == "--convert" || args[0] == "--selftest" || args[0] == "--help" ||
+                    args[0] == "--theme-audit");
 
             if (consoleMode)
             {
@@ -56,6 +61,22 @@ namespace McPackStudio
                     code = SelfTest.Run(outFile);
                     Console.WriteLine(code == 0 ? "自测通过" : "自测存在失败项");
                 }
+                else if (args[0] == "--theme-audit")
+                {
+                    if (args.Length < 2)
+                    {
+                        Console.WriteLine("用法: MCPackStudio.exe --theme-audit <截图目录>");
+                        code = 2;
+                    }
+                    else
+                    {
+                        string report = ThemeAudit.Scan(args[1]);
+                        Console.WriteLine("深色主题漏白自检（亮度 200 且 RGB 接近、连续 40px 以上才算）");
+                        Console.WriteLine();
+                        Console.Write(report);
+                        code = report.Contains("!!") ? 1 : 0;
+                    }
+                }
                 else
                 {
                     code = Cli.Convert(args);
@@ -68,6 +89,14 @@ namespace McPackStudio
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            /*
+             * 滚轮路由：鼠标停在列表/文本框这类「自己能滚」的子控件上时，
+             * Windows 会把滚轮消息直接发给那个子控件，父滚动容器收不到，
+             * 表现为「鼠标移到表格上滚轮就没反应」。
+             * 挂个全局过滤器，把没被消耗的滚轮转给最近的滚动容器。
+             */
+            Application.AddMessageFilter(new WheelRouter());
 
             Application.ThreadException += (s, e) =>
             {
@@ -113,6 +142,18 @@ namespace McPackStudio
                         i++;
                         continue;
                     }
+                    if (args[i] == "--theme-test" && i + 1 < args.Length)
+                    {
+                        ThemeTestDir = args[i + 1];
+                        i++;
+                        continue;
+                    }
+                    if (args[i] == "--select-test" && i + 1 < args.Length)
+                    {
+                        SelectTestDir = args[i + 1];
+                        i++;
+                        continue;
+                    }
                     if (!string.IsNullOrEmpty(args[i]) && !args[i].StartsWith("--", StringComparison.Ordinal) && preload == null)
                     {
                         preload = args[i];
@@ -153,6 +194,26 @@ namespace McPackStudio
                 };
             }
 
+            if (!string.IsNullOrEmpty(ThemeTestDir))
+            {
+                string captured = ThemeTestDir;
+                shell.Shown += (s, e) =>
+                {
+                    shell.RunThemeTest(captured);
+                    shell.Close();
+                };
+            }
+
+            if (!string.IsNullOrEmpty(SelectTestDir))
+            {
+                string captured = SelectTestDir;
+                shell.Shown += (s, e) =>
+                {
+                    shell.RunSelectTest(captured);
+                    shell.Close();
+                };
+            }
+
             Application.Run(shell);
         }
 
@@ -186,6 +247,12 @@ namespace McPackStudio
             Console.WriteLine("  MCPackStudio.exe --nbt <文件>            打开界面并直接载入这个 NBT 文件");
             Console.WriteLine();
             Console.WriteLine("  MCPackStudio.exe --selftest [输出文件]   运行内置自测");
+            Console.WriteLine("  MCPackStudio.exe --theme-audit <目录>     扫描截图里的过亮区域（深色主题自检）");
+            Console.WriteLine();
+            Console.WriteLine("界面排版调试：");
+            Console.WriteLine("  MCPackStudio.exe --layout <文件>          导出当前控件布局");
+            Console.WriteLine("  MCPackStudio.exe --shot-sizes <文件>      导出几种窗口尺寸下的布局");
+            Console.WriteLine("  MCPackStudio.exe --shots <目录>           依次给每个页面截图");
         }
     }
 }

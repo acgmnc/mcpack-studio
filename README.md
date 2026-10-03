@@ -10,7 +10,7 @@
 
 **没有侧边栏**。导航分两处：
 
-- **顶部导航条** —— 横向排开所有主模块（`主页 | 资源包 | 工具箱 | 设置与帮助`），
+- **顶部导航条** —— 横向排开所有主模块（`主页 | 资源包 | 工具箱 | NBT | 设置与帮助`），
   当前模块高亮；已经在某个模块里时再点它一次会回到该模块的落地页
 - **子模块条** —— 进入模块后出现在导航条下方，是该模块的子模块（自动换行）
 
@@ -257,23 +257,30 @@ release\使用说明.md
 
 界面里的「设置与帮助 · 关于与自测」也能一键跑。
 
-### 排版自检
+### 排版与配色自检
 
-界面排版出问题时，用这两个调试开关把实际布局导出来，不用靠肉眼猜：
+界面排版或深色配色出问题时，用这几个调试开关把实际状态导出来，不用靠肉眼猜：
 
 ```powershell
 # 把客户区依次设成默认 / 最小 / 放大 / 宽扁四种尺寸，每种写一份控件布局快照
 .\release\MCPackStudio.exe --shot-sizes layout.txt
 
-# 依次切到全部 11 个页面，每页截一张图（用 PrintWindow 渲染，窗口不在前台也能截）
+# 依次切到全部页面（含 NBT 两页）各截一张图 —— 用 PrintWindow 让窗口自己渲染：
+# 自绘控件内容正确，窗口不在前台也照样截得到
 .\release\MCPackStudio.exe --shots tools\out\pages
 
 # 只导出当前布局（窗口尺寸变化后会自动重写一次）
 .\release\MCPackStudio.exe --layout layout.txt
+
+# 扫描截图里「漏白的原生控件」，超标的按行报出来
+.\release\MCPackStudio.exe --theme-audit tools\out\pages
 ```
 
 布局快照里每行是一个控件的 `bounds`（父坐标）、`abs`（相对窗口客户区）和 `dock` 方式，
 对不齐时一眼就能看出是谁占了谁的地方。
+
+`--theme-audit` 的判定条件是「够亮 + 够灰 + 横向连续 40px 以上」三条同时满足 ——
+浅色文字的笔画不会形成 40px 连续段，所以只有真正的白色控件区域会被报出来。
 
 ---
 
@@ -290,7 +297,9 @@ src/
 ├── Converter.cs       转换规划、冲突检测、执行、报告
 │
 ├── Theme.cs           统一配色与字体
-├── Widgets.cs         共享控件：卡片 / 按钮 / 复选框 / 报告表 / 工具函数
+├── DarkControls.cs    自绘深色控件：PageTabs / FlatSelect / FancyProgress
+├── DarkScroll.cs      自绘深色滚动条（DarkScrollBar / DarkScrollHost / WheelRouter）
+├── Widgets.cs         共享控件：卡片 / 按钮 / 复选框 / 深色列表 / 报告表 / 工具函数
 ├── TopNav.cs          顶部导航条（横向模块切换 + 主页入口）
 ├── Modules.cs         模块契约 IModulePage + 登记表 UiRegistry + 占位页
 ├── HomePage.cs        主页：主模块列表（ModuleCard + 子模块标签 + 空位 + 矢量图标集）
@@ -300,7 +309,8 @@ src/
 ├── ConvertPage.cs     资源包 · 版本转换
 ├── Pages.cs           批量转换 / 版本对照表 / 转换规则说明 / 关于与自测
 │
-├── StagedWriter.cs    暂存写入 + 原子替换 + 页面搭建辅助（PageKit）
+├── StagedWriter.cs    暂存写入 + 原子替换 + 页面搭建辅助（PageKit）+ 深色模式（DarkMode）
+├── ThemeAudit.cs      漏白自检：扫描截图里的白色原生控件区域
 ├── PackMerge.cs       合并引擎：来源优先级、冲突检测与决策
 ├── PackMergePage.cs   资源包 · 合并资源包
 ├── PackBrowsePage.cs  资源包 · 内容浏览（文件树 + 类型筛选 + 预览）
@@ -372,6 +382,52 @@ src/
   再决定容器高度，避免写死的高度把文字裁掉。
 - **图标全部矢量绘制**，不用字体字形 —— 中文字体里 `⤓`、`⇄` 这类符号经常缺字形或
   被渲染成全角方块。
+
+### 深色主题：哪些控件必须自绘
+
+WinForms 是**混合渲染**的：一部分控件走 GDI+ 自己画（颜色随便改），
+另一部分是把 Win32 原生控件套个外壳 —— 边框、滚动条、下拉按钮都由**系统主题引擎**画，
+`BackColor`、`FlatStyle` 这些属性根本管不到，`SetWindowTheme` 也不是万能的。
+
+实测结果（`--theme-audit` 量出来的，不是猜的）：
+
+| 控件 | 原生部分 | 处理方式 |
+| --- | --- | --- |
+| `TabControl` | 页眉整条（含最后一个页签右边的空白） | **换成自绘的 `PageTabs`**。父容器自绘、`DrawItem` 里铺满、`SetWindowTheme` 三种办法都被它自己的 `WM_PAINT` 盖回去 |
+| `ComboBox` | 边框 + 下拉按钮是纯白 `RGB(255,255,255)` | **换成自绘的 `FlatSelect`**（展开列表也自绘）。四种主题办法都压不住 |
+| `ProgressBar` | 未填充部分是系统浅灰 | **换成自绘的 `FancyProgress`**（顺带做了 UI 线程封送，后台线程推进度不会崩） |
+| 各滚动条 | 滚动条槽/滑块 | `SetWindowTheme(hwnd, "DarkMode_Explorer")` —— 实测**只有这个名字有效**，`DarkMode_CFD` / `DarkMode_ItemsView` / `Explorer` 全都无效 |
+| 页面级滚动条 | 滑块始终是白的 | **换成自绘的 `DarkScrollHost`**。`AutoScroll` 面板的滚动条槽能套主题，但滑块怎么都不变色（和 `ListView` 的滚动条一样），所以干脆不用 `AutoScroll`：自己测内容高度、自己移动 `Content.Top`，配一条自绘的 `DarkScrollBar`。见下 |
+| 多行 `TextBox` 的滚动条 | 滑块始终是白的 | **换成 `RichTextBox` + `ScrollBars.None`**（自带滚轮与键盘滚动）。它的 `EDIT` 窗口套主题会露出浅色滚动条槽，不套又留白滑块，两头都不对 |
+| `DataGridView` | 内容区最上沿有一条白色边线 | 用顶部 1px 内边距把它挤出可视范围（`BorderStyle` / `AdvancedBorderStyle` 都关不掉，`OnPaint` 里也盖不住） |
+
+两个关键坑：
+
+1. **套主题的时机**。滚动条是**延迟创建**的（内容超出、窗口变大时才建），
+   而且出现后会按系统浅色画一遍 —— 在它出现之前套主题是白费劲。
+   所以 `DarkMode.ApplyDeferred()` 会推迟到本次消息处理完、再连试几次。
+2. **跳过窗口 ≠ 跳过子窗口**。`TextBox`（`EDIT`）自己不能套深色，
+   但它的滚动条子窗口必须套 —— `ApplyThemeToTree` 是分开处理的。
+
+### 自绘滚动条（`DarkScroll.cs`）
+
+滑块压不住的那类滚动条，一律换成自绘。三个部件：
+
+| 类型 | 职责 |
+| --- | --- |
+| `DarkScrollBar` | 自绘滑块与轨道，接管拖动、点击翻页、悬停高亮 |
+| `DarkScrollHost` | 页面宿主。**不用 `AutoScroll`** —— 自己测内容高度、自己移动 `Content.Top` |
+| `WheelRouter` | 全局消息过滤器。鼠标停在列表/文本框上时滚轮默认发给那个子控件，父容器收不到，这里把没被消耗的滚轮转给最近的 `DarkScrollHost` |
+
+`DarkScrollHost` 故意暴露**与 `Panel` 同名的 `Padding` 属性**并转发给内层 `Content`，
+所以原来写 `new Panel { AutoScroll = true, Padding = ... }` 的地方只要换成
+`PageKit.MakeHost()`，其余代码一行都不用改。
+
+验证方式是 `PrintWindow` 截图后**逐像素取样**滚动条区域：滑块取到 `Theme.LineStrong`、
+轨道取到 `Theme.BgPanel`，亮像素 0 个 —— 不靠肉眼判断。
+
+自检用 `--theme-audit`：判定条件是「够亮 + 够灰 + 横向连续 40px 以上」三条同时满足，
+浅色文字的笔画不会形成 40px 连续段，所以只有真正的白色控件区域会被报出来。
 
 ---
 

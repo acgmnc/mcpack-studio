@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -25,8 +25,9 @@ namespace McPackStudio
         private PackAnalysis _analysis;
         private string _originalText;
 
-        private TextBox _pathBox, _descBox, _rawBox, _log;
-        private ComboBox _verCombo;
+        private TextBox _pathBox, _descBox, _rawBox;
+        private RichTextBox _log;
+        private FlatSelect _verCombo;
         private Panel _gamePreview;
         private Label _info;
         private FlatBtn _saveBtn, _revertBtn;
@@ -35,6 +36,15 @@ namespace McPackStudio
 
         public void OnEnter() { }
         public void OnLeave() { if (_analysis != null) { _analysis.Cleanup(); _analysis = null; } }
+
+        /// <summary>外部（启动参数 / 拖放 / 排版自检）预填源资源包并直接读取</summary>
+        public void PreloadSource(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            if (!Directory.Exists(path) && !File.Exists(path)) return;
+            _pathBox.Text = path;
+            DoLoad();
+        }
 
         public Control CreateView()
         {
@@ -136,8 +146,8 @@ namespace McPackStudio
             rowD.Controls.Add(_descBox);
 
             /* 版本 */
-            _verCombo = new ComboBox { Dock = DockStyle.Left, Width = 400 };
-            Ui.StyleCombo(_verCombo);
+            _verCombo = new FlatSelect { Dock = DockStyle.Left, Width = 400 };
+            Ui.StyleSelect(_verCombo);
             _verCombo.Items.Add("（不改动版本声明）");
             foreach (var v in Settings.DisplayVersions().OrderByDescending(x => x.Format))
                 _verCombo.Items.Add(new ComboItem
