@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -25,7 +25,7 @@ namespace McPackStudio
 
         private TextBox _pathBox, _filterBox, _textPreview;
         private TreeView _tree;
-        private ListView _typeList;
+        private ToolList _typeList;
         private PictureBox _imagePreview;
         private Label _info, _previewTitle, _audioInfo;
         private ComboBox _typeFilter;
@@ -173,7 +173,7 @@ namespace McPackStudio
             _tree.BeforeExpand += (s, e) => LazyLoad(e.Node);
 
             /* 类型列表 */
-            _typeList = new ListView
+            _typeList = new ToolList
             {
                 Dock = DockStyle.Fill,
                 View = View.Details,
@@ -185,8 +185,7 @@ namespace McPackStudio
                 Font = Theme.F(8.5f),
                 HideSelection = false,
             };
-            _typeList.Columns.Add("文件", 300);
-            _typeList.Columns.Add("大小", 90);
+            _typeList.SetColumns("文件", -1, "大小", 90);
             _typeList.SelectedIndexChanged += (s, e) => OnTypeListSelect();
 
             /* 预览区 */

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -35,7 +35,7 @@ namespace McPackStudio
         private TextBox _outBox;
         private FlatBtn _outBrowse;
         private FlatBtn _analyzeBtn, _previewBtn, _convertBtn;
-        private ListView _fileList;
+        private ToolList _fileList;
         private TextBox _logBox;
         private ProgressBar _progress;
         private ReportGrid _reportGrid;
@@ -272,7 +272,7 @@ namespace McPackStudio
             // --- 改动明细
             var previewPage = new TabPage("改动明细") { BackColor = Theme.BgPanel };
             var split = PageKit.MakeSplit(Orientation.Horizontal, 0.62, 90, 70);
-            _fileList = new ListView
+            _fileList = new ToolList
             {
                 Dock = DockStyle.Fill,
                 View = View.Details,
@@ -285,11 +285,7 @@ namespace McPackStudio
                 CheckBoxes = true,
                 HideSelection = false,
             };
-            _fileList.Columns.Add("", 28);
-            _fileList.Columns.Add("动作", 66);
-            _fileList.Columns.Add("源路径", 320);
-            _fileList.Columns.Add("→ 输出路径", 320);
-            _fileList.Columns.Add("说明", 300);
+            _fileList.SetColumns("", 28, "动作", 66, "源路径", 320, "→ 输出路径", 320, "说明", -1);
             _fileList.ItemChecked += (s, e) => OnFileChecked(e.Item);
 
             _logBox = Ui.LogBox();

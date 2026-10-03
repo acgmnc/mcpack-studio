@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -26,7 +26,7 @@ namespace McPackStudio
         private ComboBox _modeCombo, _scopeCombo;
         private NumericUpDown _numStart, _numStep;
         private ToolCheck _useRegex, _caseSensitive;
-        private ListView _preview;
+        private ToolList _preview;
         private FlatBtn _planBtn, _applyBtn;
         private Label _summary;
 
@@ -296,7 +296,7 @@ namespace McPackStudio
             bar.Controls.Add(_applyBtn);
             bar.Controls.Add(reset);
 
-            _preview = new ListView
+            _preview = new ToolList
             {
                 Dock = DockStyle.Fill,
                 View = View.Details,
@@ -308,9 +308,7 @@ namespace McPackStudio
                 Font = Theme.F(8.5f),
                 HideSelection = false,
             };
-            _preview.Columns.Add("原路径", 340);
-            _preview.Columns.Add("新路径", 340);
-            _preview.Columns.Add("状态", 280);
+            _preview.SetColumns("原路径", -1, "新路径", -1, "状态", 260);
 
             _log = Ui.LogBox();
             _log.Height = 70;

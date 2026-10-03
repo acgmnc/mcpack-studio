@@ -262,6 +262,169 @@ namespace McPackStudio
     }
 
     /* ================================================================== */
+    /* 深色列表                                                            */
+    /* ================================================================== */
+
+    /// <summary>
+    /// 统一风格的明细列表。
+    ///
+    /// ListView 的列头颜色在 WinForms 里没有公开属性可控，只能把 OwnerDraw 打开自绘，
+    /// 否则在深色主题下会露出一条系统配色的白条（和整体完全不搭）。
+    /// </summary>
+    internal sealed class ToolList : ListView
+    {
+        public ToolList()
+        {
+            View = View.Details;
+            FullRowSelect = true;
+            GridLines = false;
+            HideSelection = false;
+            MultiSelect = false;
+            BorderStyle = BorderStyle.None;
+            BackColor = Theme.BgInput;
+            ForeColor = Theme.Fg;
+            Font = Theme.F(8.5f);
+            OwnerDraw = true;
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+
+            /* ListView 默认不双缓冲，自绘会闪；用反射打开它的 DoubleBuffered */
+            try
+            {
+                var prop = typeof(ListView).GetProperty("DoubleBuffered",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                if (prop != null) prop.SetValue(this, true, null);
+            }
+            catch { }
+
+            /* 滚动条由系统绘制，得让它走深色主题 */
+            HandleCreated += (s, e) => DarkMode.ApplyTo(Handle);
+
+            /*
+             * 兜底背景。
+             *
+             * OwnerDraw 只对「真实存在的列/项」触发绘制事件，
+             * 列宽加起来没占满控件时，右侧会露出一条系统配色的白边
+             * （ListView 自身没有横跨整行的画布事件可用）。
+             * 这里先手动画一次背景，把那条白边盖掉。
+             */
+            Paint += (s, e) =>
+            {
+                using (var b = new SolidBrush(Theme.BgInput))
+                    e.Graphics.FillRectangle(b, ClientRectangle);
+            };
+        }
+
+        /// <summary>
+        /// 按 (标题, 宽度) 建列。宽度传 -1 表示这一列吃掉剩余宽度。
+        ///
+        /// 必须让列宽之和填满控件：列宽不足时 ListView 会在右侧留一条
+        /// 系统配色的空白填充带，自绘也盖不掉（它由内部子窗口绘制），
+        /// 在深色主题下就是一条刺眼的白边。
+        /// </summary>
+        public void SetColumns(params object[] pairs)
+        {
+            _specs.Clear();
+            for (int i = 0; i + 1 < pairs.Length; i += 2)
+                _specs.Add(new ColSpec
+                {
+                    Title = Convert.ToString(pairs[i]),
+                    Width = Convert.ToInt32(pairs[i + 1]),
+                });
+
+            Columns.Clear();
+            foreach (var s in _specs) Columns.Add(s.Title, s.Width < 0 ? 100 : s.Width);
+
+            SizeChanged += (s, e) => FitColumns();
+            FitColumns();
+        }
+
+        private sealed class ColSpec
+        {
+            public string Title;
+            public int Width;
+        }
+
+        private readonly List<ColSpec> _specs = new List<ColSpec>();
+
+        /// <summary>把标了 -1 的列撑到剩余宽度，保证列宽之和 == 控件宽度</summary>
+        private void FitColumns()
+        {
+            if (_specs.Count == 0 || Columns.Count != _specs.Count) return;
+
+            int total = ClientSize.Width;
+            if (total <= 0) return;
+
+            int fixedSum = 0;
+            int flexCount = 0;
+            foreach (var s in _specs)
+            {
+                if (s.Width < 0) flexCount++;
+                else fixedSum += s.Width;
+            }
+            if (flexCount == 0) return;
+
+            int flex = (total - fixedSum) / flexCount;
+            if (flex < 40) flex = 40;      // 太窄就没意义了，交给横向滚动条
+
+            for (int i = 0; i < _specs.Count; i++)
+            {
+                int w = _specs[i].Width < 0 ? flex : _specs[i].Width;
+                if (Columns[i].Width != w) Columns[i].Width = w;
+            }
+        }
+
+        protected override void OnDrawColumnHeader(DrawListViewColumnHeaderEventArgs e)
+        {
+            var g = e.Graphics;
+            var r = e.Bounds;
+
+            using (var b = new SolidBrush(Theme.BgPanelAlt)) g.FillRectangle(b, r);
+            using (var pen = new Pen(Theme.Line, 1))
+            {
+                g.DrawLine(pen, r.Left, r.Bottom - 1, r.Right, r.Bottom - 1);
+                g.DrawLine(pen, r.Right - 1, r.Top + 4, r.Right - 1, r.Bottom - 5);
+            }
+
+            var textRect = new Rectangle(r.X + 8, r.Y, Math.Max(0, r.Width - 12), r.Height);
+            TextRenderer.DrawText(g, e.Header.Text, Theme.F(8.5f, FontStyle.Bold), textRect,
+                Theme.FgMuted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+        }
+
+        protected override void OnDrawItem(DrawListViewItemEventArgs e)
+        {
+            /* 整行的背景与选中态在这里画；文字由 OnDrawSubItem 负责 */
+            var r = e.Bounds;
+            Color fill;
+
+            if (e.Item.Selected)
+                fill = Focused ? Theme.AccentSoft : Theme.BgActive;
+            else if ((e.ItemIndex & 1) == 1)
+                fill = Theme.BgPanelAlt;          // 斑马纹，长列表更好读
+            else
+                fill = Theme.BgInput;
+
+            using (var b = new SolidBrush(fill))
+                e.Graphics.FillRectangle(b, new Rectangle(0, r.Top, ClientSize.Width, r.Height));
+        }
+
+        protected override void OnDrawSubItem(DrawListViewSubItemEventArgs e)
+        {
+            var r = e.Bounds;
+            if (r.Width <= 0 || r.Height <= 0) return;
+
+            Color fg = e.Item.Selected ? Theme.Fg : (e.Item.ForeColor == Color.Empty ? ForeColor : e.Item.ForeColor);
+
+            /* 第一列用不着缩进；后面的列加一点左内边距 */
+            var textRect = new Rectangle(r.X + 8, r.Y, Math.Max(0, r.Width - 12), r.Height);
+            TextRenderer.DrawText(e.Graphics, e.SubItem.Text, Theme.F(8.5f), textRect, fg,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+        }
+    }
+
+    /* ================================================================== */
     /* 键值报告表                                                          */
     /* ================================================================== */
 

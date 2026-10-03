@@ -98,6 +98,10 @@ namespace McPackStudio
             DoubleBuffered = true;
             AllowDrop = true;
 
+            /* 让系统把标题栏、滚动条等原生元素也按深色绘制，
+               否则深色界面上会露出白色滚动条和浅色标题栏 */
+            DarkMode.Apply(this);
+
             DragEnter += (s, e) =>
             {
                 if (e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop)) e.Effect = DragDropEffects.Copy;

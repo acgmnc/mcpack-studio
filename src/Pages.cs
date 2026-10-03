@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -22,7 +22,7 @@ namespace McPackStudio
         private TextBox _rootBox, _outBox;
         private ComboBox _targetCombo;
         private ToolCheck _migrateAssets;
-        private ListView _list;
+        private ToolList _list;
         private TextBox _log;
         private ProgressBar _progress;
         private FlatBtn _scanBtn, _runBtn, _outBrowse;
@@ -165,7 +165,7 @@ namespace McPackStudio
             _runBtn.Click += (s, e) => DoRun();
 
             var split = PageKit.MakeSplit(Orientation.Horizontal, 0.6, 90, 70);
-            _list = new ListView
+            _list = new ToolList
             {
                 Dock = DockStyle.Fill,
                 View = View.Details,
@@ -177,10 +177,7 @@ namespace McPackStudio
                 Font = Theme.F(8.5f),
                 HideSelection = false,
             };
-            _list.Columns.Add("#", 40);
-            _list.Columns.Add("资源包", 240);
-            _list.Columns.Add("类型", 70);
-            _list.Columns.Add("结果", 460);
+            _list.SetColumns("#", 40, "资源包", 240, "类型", 70, "结果", -1);
             _log = Ui.LogBox();
             split.Panel1.Controls.Add(_list);
             split.Panel2.Controls.Add(_log);
@@ -379,7 +376,7 @@ namespace McPackStudio
         public string Subtitle { get { return "查询 pack_format 与 Minecraft 版本的对应关系，共 " + Settings.AllVersions().Count + " 条"; } }
 
         private Control _view;
-        private ListView _list;
+        private ToolList _list;
         private TextBox _filter;
         private Label _summary;
 
@@ -425,7 +422,7 @@ namespace McPackStudio
             hint.Padding = new Padding(12, 0, 0, 0);
             bar.Controls.Add(hint);
 
-            _list = new ListView
+            _list = new ToolList
             {
                 Dock = DockStyle.Fill,
                 View = View.Details,
@@ -437,10 +434,7 @@ namespace McPackStudio
                 Font = Theme.F(9f),
                 HideSelection = false,
             };
-            _list.Columns.Add("pack_format", 110);
-            _list.Columns.Add("版本范围", 260);
-            _list.Columns.Add("阶段", 280);
-            _list.Columns.Add("版本数量", 90);
+            _list.SetColumns("pack_format", 110, "版本范围", 260, "阶段", -1, "版本数量", 90);
 
             var gap = new Panel { Dock = DockStyle.Top, Height = 10, BackColor = Color.Transparent };
 

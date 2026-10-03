@@ -21,8 +21,8 @@ namespace McPackStudio
 
         private Control _view;
 
-        private ListView _sourceList;
-        private ListView _conflictList;
+        private ToolList _sourceList;
+        private ToolList _conflictList;
         private ComboBox _strategy;
         private ComboBox _formatCombo;
         private ComboBox _modeCombo;
@@ -73,7 +73,7 @@ namespace McPackStudio
                 Margin = new Padding(0, 0, 0, 12),
             };
 
-            _sourceList = new ListView
+            _sourceList = new ToolList
             {
                 Dock = DockStyle.Fill,
                 View = View.Details,
@@ -85,12 +85,7 @@ namespace McPackStudio
                 Font = Theme.F(8.5f),
                 HideSelection = false,
             };
-            _sourceList.Columns.Add("优先", 48);
-            _sourceList.Columns.Add("来源", 320);
-            _sourceList.Columns.Add("类型", 64);
-            _sourceList.Columns.Add("版本", 220);
-            _sourceList.Columns.Add("文件", 60);
-            _sourceList.Columns.Add("路径", 420);
+            _sourceList.SetColumns("优先", 48, "来源", 300, "类型", 64, "版本", 220, "文件", 60, "路径", -1);
 
             var bar = new FlowLayoutPanel
             {
@@ -320,7 +315,7 @@ namespace McPackStudio
                 Margin = new Padding(0, 0, 0, 12),
             };
 
-            _conflictList = new ListView
+            _conflictList = new ToolList
             {
                 Dock = DockStyle.Fill,
                 View = View.Details,
@@ -332,10 +327,7 @@ namespace McPackStudio
                 Font = Theme.F(8.5f),
                 HideSelection = false,
             };
-            _conflictList.Columns.Add("路径", 460);
-            _conflictList.Columns.Add("状态", 90);
-            _conflictList.Columns.Add("保留", 200);
-            _conflictList.Columns.Add("涉及来源", 380);
+            _conflictList.SetColumns("路径", -1, "状态", 90, "保留", 200, "涉及来源", 320);
 
             var bar = new FlowLayoutPanel
             {

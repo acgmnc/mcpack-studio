@@ -287,6 +287,72 @@ namespace McPackStudio
     }
 
     /* ================================================================== */
+    /* 深色模式（让系统原生控件也跟着变深）                                  */
+    /* ================================================================== */
+
+    /// <summary>
+    /// 通过未公开的 uxtheme 接口让窗口进入深色模式。
+    ///
+    /// 不加这个，标题栏、滚动条、下拉列表等由系统绘制的部分会保持浅色，
+    /// 在深色界面上非常突兀（尤其是 ListView / DataGridView 的滚动条）。
+    /// 接口本身是「未公开」的，所以调用失败时静默忽略，只是少了个美化。
+    /// </summary>
+    internal static class DarkMode
+    {
+        [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern int SetWindowTheme(IntPtr hWnd, string appName, string idList);
+
+        [System.Runtime.InteropServices.DllImport("uxtheme.dll", EntryPoint = "#135", SetLastError = true)]
+        private static extern int SetPreferredAppMode(int appMode);
+
+        [System.Runtime.InteropServices.DllImport("uxtheme.dll", EntryPoint = "#133")]
+        private static extern int AllowDarkModeForWindow(IntPtr hWnd, bool allow);
+
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19;
+
+        private static bool _globalDone;
+
+        /// <summary>对整个进程生效一次：后续新建的窗口都按深色绘制</summary>
+        private static void ApplyGlobal()
+        {
+            if (_globalDone) return;
+            _globalDone = true;
+            try { SetPreferredAppMode(2); }        // 2 = ForceDark
+            catch { }
+        }
+
+        public static void Apply(Form form)
+        {
+            ApplyGlobal();
+            if (form == null) return;
+
+            // 句柄可能还没建好，建好后补一次
+            if (form.IsHandleCreated) ApplyTo(form.Handle);
+            form.HandleCreated += (s, e) => ApplyTo(form.Handle);
+        }
+
+        public static void ApplyTo(IntPtr handle)
+        {
+            if (handle == IntPtr.Zero) return;
+
+            try { AllowDarkModeForWindow(handle, true); } catch { }
+
+            int on = 1;
+            try { DwmSetWindowAttribute(handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref on, sizeof(int)); }
+            catch { }
+            try { DwmSetWindowAttribute(handle, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref on, sizeof(int)); }
+            catch { }
+
+            // 让滚动条、编辑框等子控件用深色主题
+            try { SetWindowTheme(handle, "DarkMode_Explorer", null); } catch { }
+        }
+    }
+
+    /* ================================================================== */
     /* 页面搭建辅助                                                        */
     /* ================================================================== */
 
