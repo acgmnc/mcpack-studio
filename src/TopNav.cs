@@ -240,6 +240,7 @@ namespace McPackStudio
             if (moduleId == "pack") return "pack";
             if (moduleId == "tools") return "tools";
             if (moduleId == "settings") return "settings";
+            if (moduleId == "nbt") return "nbt";
             return "default";
         }
     }

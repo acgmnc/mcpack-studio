@@ -74,11 +74,15 @@ MCPack Studio    Minecraft 资源包工具箱
 ├ pack.mcmeta ✓  描述、图标与版本声明
 ├ 批量重命名  ✓  按规则改名，支持正则
 └ 新建资源包  ✓  生成标准目录结构
+
+NBT（移植自 NBTExplorer）
+├ NBT 编辑器   ✓  树形浏览 / 增删改 / 查找替换 / 另存
+└ SNBT 与 JSON ✓  NBT 与文本互转、导出 JSON
 ```
 
-**11 个子模块全部已实现**。
+**13 个子模块全部已实现**。
 
-一共 **3 个主模块 / 11 个子模块**。状态栏始终显示当前位置（如「位置：资源包 · 版本转换」）。
+一共 **4 个主模块 / 13 个子模块**。状态栏始终显示当前位置（如「位置：资源包 · 版本转换」）。
 
 程序会记住你上次停留的子模块，下次打开直接回到那里
 （想每次从主页开始就删掉 `%APPDATA%\MCPackStudio\settings.ini`）。
@@ -100,13 +104,29 @@ MCPack Studio    Minecraft 资源包工具箱
 
 97 条 `pack_format` 记录，可输入版本号或格式号实时过滤。
 
+### NBT · NBT 编辑器
+
+把 NBTExplorer 的能力搬了进来（MIT 许可，详见「数据来源与许可」）。打开 `.dat` / `.nbt` / `level.dat` 后：
+
+- **树形浏览**：13 种标签类型按类型着色，复合标签与列表按需展开（大文件不会一次性铺开）
+- **编辑**：添加子标签、改名、改值、删除、剪切/复制/粘贴、上移/下移，支持撤销/重做
+- **查找替换**：按名称（包含 / 通配符 / 正则 / 相等）、类型、值（等于、不等、大于、小于、包含、开头）组合筛选，结果双击定位
+- **数组与十六进制**：数组直接填逗号分隔的数字；字节数组另有十六进制编辑器
+- **格式识别**：gzip / zlib / 裸 deflate / 不压缩自动判断，基岩版 level.dat 的「8 字节头 + 小端」也认
+- **导出**：SNBT 文本、JSON；SNBT 还能导入回树里
+
+### NBT · SNBT 与 JSON
+
+三张卡片：**打开文件 → 文本 → 存回去**。把 `.dat` 变成可读的 SNBT 文本，改完再写回文件，
+往返无损（JSON 导出会丢超过 2^53 的长整数精度，界面上有提示）。
+
 ### 设置与帮助 · 转换规则说明
 
 把「会做哪些迁移、不会做哪些、以及为什么」写进界面，避免误以为它是万能转换器。
 
 ### 设置与帮助 · 关于与自测
 
-版本信息、数据来源，以及**一键运行内置自测**（232 项断言，在临时目录里跑完整流程，不动你的文件）。
+版本信息、数据来源，以及**一键运行内置自测**（314 项断言，在临时目录里跑完整流程，不动你的文件）。
 
 ---
 
@@ -155,6 +175,7 @@ Minecraft 在 1.13 做了一次「扁平化」（Flattening），把大量资源
 MCPackStudio.exe --convert MyPack --to 1.20.1 --out MyPack_1.20.1
 MCPackStudio.exe --convert MyPack.zip --to 46 --out New.zip --zip
 MCPackStudio.exe --analyze MyPack
+MCPackStudio.exe --nbt level.dat
 MCPackStudio.exe --help
 ```
 
@@ -169,6 +190,7 @@ MCPackStudio.exe --help
 | `--exclude <相对路径>` | 排除某个文件，可重复 |
 | `--analyze` | 只分析不转换 |
 | `--report <文件>` | 完整日志写入文件 |
+| `--nbt <文件>` | 打开界面并直接进 NBT 编辑器载入这个文件 |
 
 ---
 
@@ -225,8 +247,9 @@ release\使用说明.md
 
 ### 自测
 
-内置 232 项断言，覆盖版本表、JSON 读写、语言键规则、双向转换、ZIP 输入输出、合并与冲突决策、
-重命名冲突、路径安全、损坏文件处理等：
+内置 314 项断言，覆盖版本表、JSON 读写、语言键规则、双向转换、ZIP 输入输出、合并与冲突决策、
+重命名冲突、路径安全、损坏文件处理，以及 NBT 的模型、SNBT 往返、查找规则、撤销栈、
+二进制读写（大端 / 小端、gzip / zlib / 不压缩、基岩版头、坏数据）等：
 
 ```powershell
 .\MCPackStudio.exe --selftest selftest.txt
@@ -242,7 +265,7 @@ release\使用说明.md
 # 把客户区依次设成默认 / 最小 / 放大 / 宽扁四种尺寸，每种写一份控件布局快照
 .\release\MCPackStudio.exe --shot-sizes layout.txt
 
-# 依次切到全部 9 个页面，每页截一张图（自绘控件也能正确截图）
+# 依次切到全部 11 个页面，每页截一张图（用 PrintWindow 渲染，窗口不在前台也能截）
 .\release\MCPackStudio.exe --shots tools\out\pages
 
 # 只导出当前布局（窗口尺寸变化后会自动重写一次）
@@ -287,6 +310,14 @@ src/
 ├── PackScaffold.cs    精简 PNG 编码器 + 图像生成 + 新建资源包骨架
 ├── PackNewPage.cs     资源包 · 新建资源包
 ├── IconPage.cs        工具箱 · 图标与占位图
+│
+├── NbtTag.cs          NBT 标签模型（13 种类型）+ 遍历 + 文本 / 数字转换
+├── NbtIo.cs           NBT 二进制读写：大小端、gzip / zlib / deflate、基岩版头、原子写
+├── NbtSnbt.cs         SNBT 读写（Minecraft 的文本 NBT 写法）+ JSON 导出
+├── NbtEdit.cs         查找规则与搜索、快照式撤销栈、编辑操作（重名 / 粘贴 / 移动）
+├── NbtPage.cs         NBT · NBT 编辑器
+├── NbtSnbtPage.cs     NBT · SNBT 与 JSON
+├── NbtDialogs.cs      NBT 相关弹窗：改值 / 十六进制 / 添加 / 查找替换 / 另存为 / 文本
 │
 ├── Cli.cs             命令行模式
 ├── SelfTest.cs        自测
@@ -351,6 +382,11 @@ src/
 - 「版本转换」这一功能的原始实现参考了同项目的 `src-tauri/src/version_converter.rs`
   （其行为是只重写 `pack_format`，本工具在它基础上增加了资源迁移）
 - 原项目版权：Copyright (C) Little_100
+- NBT 模块移植自 [jaquadro/NBTExplorer](https://github.com/jaquadro/NBTExplorer)（MIT）
+  及其依赖的 [Substrate](https://github.com/jaquadro/Substrate)（MIT）——
+  树形浏览、增删改标签、查找替换、SNBT / JSON 导出的行为都以它为准
+- NBTExplorer 与 Substrate 版权：Copyright (C) Justin Aquadro，MIT 许可证
+  （完整条款与移植说明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)）
 
 **本项目是上述项目的修改版本（modified version），以 GPL-3.0 发布，完整许可证见 [LICENSE](LICENSE)。**
 
@@ -363,7 +399,9 @@ src/
 2. 版本转换在「只改 `pack_format`」之外，增加了 1.13 扁平化资源重命名与语言文件格式转换
 3. 新增批量转换、转换预览（先列出逐文件动作再执行）、暂存目录 + 原子替换的安全写入
 4. 新增合并资源包、内容浏览、pack.mcmeta 编辑、批量重命名、新建资源包、图标生成六个功能
-5. 重新设计了界面与模块结构，并新增命令行模式与内置自测（232 项断言）
+5. 重新设计了界面与模块结构，并新增命令行模式与内置自测（314 项断言）
+6. 新增 NBT 模块：用 C# 重写了 NBTExplorer 的能力（不引用它的 DLL），并按本项目的深色界面风格重做交互；
+   格式支持在原版之上补充了基岩版小端与 8 字节头识别
 
 修订记录见本仓库的提交历史。
 
@@ -374,6 +412,7 @@ src/
 | 目录 | 用途 |
 | --- | --- |
 | `testpack-1.12/` | `pack_format 3` 的旧版包，含 `textures/blocks/`、`textures/items/`、`en_US.lang`，用来验证版本转换 |
+| `testnbt/` | NBT 合成样本：Java 版（gzip + 大端，覆盖全部 13 种标签类型）与基岩版（小端 + 8 字节头）各一份，另有 `sample.snbt` 与 `sample.json`；详见该目录下的 readme |
 | `testpack-conflict/` | 与上一个包有 **20 个同名文件**，其中 `stone.json` 与 `pack.mcmeta` 内容不同、另 18 个字节相同，另多一个独有文件 —— 用来验证**合并资源包**的冲突检测（应报"内容不同 2 个、自动合并 18 个"） |
 
 ## 贡献
@@ -381,6 +420,6 @@ src/
 欢迎提 Issue 与 PR。提交前请先：
 
 ```powershell
-.\MCPackStudio.exe --selftest      # 232 项断言应全部通过
+.\MCPackStudio.exe --selftest      # 314 项断言应全部通过
 ```
 

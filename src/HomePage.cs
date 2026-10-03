@@ -524,6 +524,19 @@ namespace McPackStudio
                             }
                             break;
                         }
+                    case "nbt":        // 标签树：一个根节点往下分出两个子节点
+                        {
+                            float top = cy - s * 0.85f;
+                            float bottom = cy + s * 0.85f;
+                            g.DrawEllipse(pen, cx - 1.9f, top - 1.9f, 3.8f, 3.8f);
+                            g.DrawLine(pen, cx, top + 1.9f, cx, cy);
+                            g.DrawLine(pen, cx - s * 0.85f, cy, cx + s * 0.85f, cy);
+                            g.DrawLine(pen, cx - s * 0.85f, cy, cx - s * 0.85f, bottom - 1.9f);
+                            g.DrawLine(pen, cx + s * 0.85f, cy, cx + s * 0.85f, bottom - 1.9f);
+                            g.DrawEllipse(pen, cx - s * 0.85f - 1.9f, bottom - 1.9f, 3.8f, 3.8f);
+                            g.DrawEllipse(pen, cx + s * 0.85f - 1.9f, bottom - 1.9f, 3.8f, 3.8f);
+                            break;
+                        }
                     case "folder":
                         {
                             float w = s * 1.8f, h = s * 1.4f;
@@ -708,6 +721,7 @@ namespace McPackStudio
             if (moduleId == "pack") return "pack";
             if (moduleId == "tools") return "tools";
             if (moduleId == "settings") return "settings";
+            if (moduleId == "nbt") return "nbt";
             return "default";
         }
 
