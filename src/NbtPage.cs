@@ -181,7 +181,9 @@ namespace McPackStudio
             _tree.DrawNode += (s, e) => DrawNode(e);
             _tree.KeyDown += (s, e) => OnTreeKey(e);
             _tree.DoubleClick += (s, e) => EditValue();
-            _tree.HandleCreated += (s, e) => DarkMode.ApplyTo(_tree.Handle);
+            /* 树的滚动条是延迟创建的系统子窗口，出现时要再套一次深色主题，
+               否则节点一多右侧就冒出一条浅灰滚动条 */
+            _tree.HandleCreated += (s, e) => { DarkMode.ApplyTo(_tree.Handle); DarkMode.ApplyDeferred(_tree, 4); };
 
             /* 右侧详情 */
             var detail = new Panel { Dock = DockStyle.Fill, BackColor = Theme.BgPanel, Padding = new Padding(14, 10, 14, 10) };

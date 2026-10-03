@@ -54,22 +54,51 @@ namespace McPackStudio
                 BorderStyle = BorderStyle.FixedSingle,
                 Font = mono ? Theme.M(9f) : Theme.F(9f),
             };
-            if (multiline)
-            {
-                box.Multiline = true;
-                box.ScrollBars = ScrollBars.Both;
-                box.WordWrap = false;
-                box.AcceptsReturn = true;
-            }
             return box;
         }
 
-        public static ComboBox Combo(int x, int y, int w, string[] items, int selected)
+        /// <summary>
+        /// 多行文本区。
+        ///
+        /// 用 RichTextBox 并关掉系统滚动条（ScrollBars.None）：多行 TextBox 的滚动条是原生控件，
+        /// 深色主题下滑块始终是白的，各种主题名都压不住（与 Ui.LogBox 同一个理由）。
+        /// RichTextBox 自带滚轮与键盘滚动，没有滚动条也不影响使用。
+        /// </summary>
+        public static RichTextBox Multiline(string text, int x, int y, int w, int h, bool readOnly, bool mono)
         {
-            var c = new ComboBox { Location = new Point(x, y), Width = w };
-            Ui.StyleCombo(c);
+            var box = new RichTextBox
+            {
+                Text = text ?? "",
+                Location = new Point(x, y),
+                Size = new Size(w, h),
+                ReadOnly = readOnly,
+                ScrollBars = RichTextBoxScrollBars.None,
+                WordWrap = false,
+                DetectUrls = false,
+                ShortcutsEnabled = true,
+                BackColor = readOnly ? Theme.BgPanelAlt : Theme.BgInput,
+                ForeColor = Theme.Fg,
+                /* 边框必须关掉：FixedSingle 的框线由系统画，是纯白的
+                   （实测深色主题下压不住，就是文本框四周那一圈白框）。
+                   底色与卡片不同，没有框线也看得出边界。 */
+                BorderStyle = BorderStyle.None,
+                Font = mono ? Theme.M(9f) : Theme.F(9f),
+            };
+            return box;
+        }
+
+        /// <summary>
+        /// 下拉框统一用自绘的 FlatSelect（原生 ComboBox 的白边框压不住，
+        /// 与仓库其它页面保持一致），API 刻意模仿 ComboBox，调用处写法不变。
+        /// </summary>
+        public static FlatSelect Combo(int x, int y, int w, string[] items, int selected)
+        {
+            var c = new FlatSelect { Location = new Point(x, y), Width = w };
+            Ui.StyleSelect(c);
+            /* 版本说明这类长文字要比控件宽，展开列表才不会被截断 */
+            c.DropDownWidth = Math.Max(w, 320);
             foreach (string s in items) c.Items.Add(s);
-            if (c.Items.Count > 0) c.SelectedIndex = Math.Max(0, Math.Min(items.Length - 1, selected));
+            if (c.ItemCount > 0) c.SelectedIndex = Math.Max(0, Math.Min(items.Length - 1, selected));
             return c;
         }
 
@@ -104,9 +133,29 @@ namespace McPackStudio
     internal sealed class NbtValueForm : Form
     {
         private readonly NbtTag _tag;
-        private TextBox _box;
+        private TextBox _box;            // 单行值
+        private RichTextBox _multi;      // 多行值（字符串、数组）
         private Label _hint;
         private FlatBtn _hexBtn;
+
+        /// <summary>当前在用的输入框内容</summary>
+        private string BoxText
+        {
+            get { return _multi != null ? _multi.Text : _box.Text; }
+        }
+
+        private void SetBoxText(string text)
+        {
+            if (_multi != null) _multi.Text = text;
+            else _box.Text = text;
+        }
+
+        /// <summary>把焦点放回输入框并全选，方便直接重输</summary>
+        private void FocusBox()
+        {
+            if (_multi != null) { _multi.Focus(); _multi.SelectAll(); }
+            else { _box.Focus(); _box.SelectAll(); }
+        }
 
         public NbtValueForm(NbtTag tag)
         {
@@ -120,9 +169,16 @@ namespace McPackStudio
 
             Controls.Add(NbtUi.Label("标签类型：" + NbtTypeInfo.Describe(tag.Type), 16, 12, 560));
 
-            _box = NbtUi.Box(tag.EditText(), 16, 38, 588, multiline, mono);
-            if (multiline) { _box.Height = 200; }
-            Controls.Add(_box);
+            if (multiline)
+            {
+                _multi = NbtUi.Multiline(tag.EditText(), 16, 38, 588, 200, false, mono);
+                Controls.Add(_multi);
+            }
+            else
+            {
+                _box = NbtUi.Box(tag.EditText(), 16, 38, 588, false, mono);
+                Controls.Add(_box);
+            }
 
             _hint = new Label
             {
@@ -184,7 +240,7 @@ namespace McPackStudio
             {
                 if (hex.ShowDialog(this) != DialogResult.OK) return;
                 bytes.Value = hex.Result;
-                _box.Text = bytes.EditText();
+                SetBoxText(bytes.EditText());
             }
         }
 
@@ -199,15 +255,14 @@ namespace McPackStudio
                     return;
                 }
 
-                _tag.SetFromText(_box.Text);
+                _tag.SetFromText(BoxText);
                 DialogResult = DialogResult.OK;
                 Close();
             }
             catch (Exception e)
             {
                 MessageBox.Show(this, e.Message, "值不合法", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                _box.Focus();
-                _box.SelectAll();
+                FocusBox();
             }
         }
     }
@@ -219,8 +274,8 @@ namespace McPackStudio
     /// <summary>字节数组的十六进制编辑（NBTExplorer 里那个 HexBox 的简化版）</summary>
     internal sealed class NbtHexForm : Form
     {
-        private TextBox _hex;
-        private TextBox _ascii;
+        private RichTextBox _hex;
+        private RichTextBox _ascii;
         private Label _info;
 
         public byte[] Result;
@@ -232,13 +287,10 @@ namespace McPackStudio
 
             NbtUi.StyleForm(this, "十六进制编辑 —— " + bytes.Length + " 字节", 760, 460);
 
-            _hex = NbtUi.Box(Format(bytes), 16, 32, 470, true, true);
-            _hex.Height = 340;
+            _hex = NbtUi.Multiline(Format(bytes), 16, 32, 470, 340, false, true);
             _hex.TextChanged += (s, e) => UpdateAscii();
 
-            _ascii = NbtUi.Box("", 498, 32, 246, true, true);
-            _ascii.Height = 340;
-            _ascii.ReadOnly = true;
+            _ascii = NbtUi.Multiline("", 498, 32, 246, 340, true, true);
 
             _info = new Label
             {
@@ -353,7 +405,7 @@ namespace McPackStudio
 
     internal sealed class NbtAddForm : Form
     {
-        private ComboBox _type;
+        private FlatSelect _type;
         private TextBox _name, _value;
         private Label _valueLabel;
 
@@ -466,7 +518,7 @@ namespace McPackStudio
     {
         private readonly NbtTag _root;
 
-        private ComboBox _nameMode, _typeCombo, _compareCombo;
+        private FlatSelect _nameMode, _typeCombo, _compareCombo;
         private TextBox _nameText, _valueText, _replaceText;
         private ToolCheck _typeCheck, _valueCheck;
         private ToolList _results;
@@ -719,7 +771,7 @@ namespace McPackStudio
 
     internal sealed class NbtSaveAsForm : Form
     {
-        private ComboBox _compression;
+        private FlatSelect _compression;
         private ToolCheck _little, _header;
         private TextBox _path;
 
@@ -809,7 +861,7 @@ namespace McPackStudio
 
     internal sealed class NbtTextForm : Form
     {
-        private readonly TextBox _box;
+        private readonly RichTextBox _box;
 
         /// <summary>编辑框里的内容（不能叫 Text，会和 Form.Text 撞名）</summary>
         public string TextValue { get { return _box.Text; } }
@@ -833,10 +885,7 @@ namespace McPackStudio
             };
             Controls.Add(label);
 
-            _box = NbtUi.Box(text, 16, 48, 728, true, true);
-            _box.Height = 400;
-            _box.ReadOnly = readOnly;
-            if (readOnly) _box.BackColor = Theme.BgPanelAlt;
+            _box = NbtUi.Multiline(text, 16, 48, 728, 400, readOnly, true);
             Controls.Add(_box);
 
             if (!readOnly)
