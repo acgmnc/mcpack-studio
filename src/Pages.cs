@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -378,9 +378,32 @@ namespace McPackStudio
             var card = new Card { Dock = DockStyle.Fill, Title = "pack_format 对照表", Hint = "只显示正式版；包含快照的格式会标注" };
 
             var bar = new Panel { Dock = DockStyle.Top, Height = 32, BackColor = Color.Transparent };
+
+            /*
+             * 停靠顺序：WinForms 按「逆 z-order」停靠，索引大的先拿空间。
+             * Dock.Fill 必须最先加，否则它会先占满整行、把两侧的 Left/Right
+             * 控件叠在自己上面（表现为提示文字被输入框盖住）。
+             */
+            var hint = Ui.Caption("输入 pack_format 或版本号过滤，例如 46、1.20、snapshot");
+            hint.Dock = DockStyle.Fill;
+            hint.AutoSize = false;
+            hint.TextAlign = ContentAlignment.MiddleLeft;
+            hint.Padding = new Padding(12, 0, 0, 0);
+            bar.Controls.Add(hint);
+
+            /*
+             * 输入框垂直居中。
+             *
+             * TextBox 是定高控件（单行约 22px，不会跟着容器变高），
+             * 直接放进 32px 的行里会顶到上边、看着没对齐。
+             * 而 Anchor 和 Dock 混用会被其它停靠控件盖住（试过，输入框直接消失）。
+             *
+             * 所以用「定高容器 Dock=Left + 容器内手工定位」：
+             * 容器的 Location 由 Dock 负责（可靠），输入框在容器里居中由这里算。
+             */
+            var filterWrap = new Panel { Dock = DockStyle.Left, Width = 248, BackColor = Color.Transparent };
             _filter = new TextBox
             {
-                Dock = DockStyle.Left,
                 Width = 240,
                 BackColor = Theme.BgInput,
                 ForeColor = Theme.Fg,
@@ -388,7 +411,19 @@ namespace McPackStudio
                 Font = Theme.F(9f),
             };
             _filter.TextChanged += (s, e) => Fill();
-            bar.Controls.Add(_filter);
+            filterWrap.Controls.Add(_filter);
+
+            Action centerFilter = () =>
+            {
+                int wrapH = filterWrap.Height;
+                if (wrapH <= 0) wrapH = 32;
+                int h = Math.Min(24, Math.Max(18, wrapH - 8));
+                _filter.SetBounds(0, Math.Max(0, (wrapH - h) / 2), 240, h);
+            };
+            filterWrap.SizeChanged += (s, e) => centerFilter();
+            centerFilter();
+
+            bar.Controls.Add(filterWrap);
 
             _summary = new Label
             {
@@ -400,13 +435,6 @@ namespace McPackStudio
                 BackColor = Color.Transparent,
             };
             bar.Controls.Add(_summary);
-
-            var hint = Ui.Caption("输入 pack_format 或版本号过滤，例如 46、1.20、snapshot");
-            hint.Dock = DockStyle.Fill;
-            hint.AutoSize = false;
-            hint.TextAlign = ContentAlignment.MiddleLeft;
-            hint.Padding = new Padding(12, 0, 0, 0);
-            bar.Controls.Add(hint);
 
             _list = new ToolList
             {

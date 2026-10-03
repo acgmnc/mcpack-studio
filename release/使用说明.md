@@ -1,4 +1,4 @@
-# MCPack Studio · Minecraft 资源包工具箱
+﻿# MCPack Studio · Minecraft 资源包工具箱
 
 把 Minecraft 资源包转换到任意版本，并迁移跨越 1.13「扁平化」时改动过的资源路径与语言文件。
 
@@ -102,7 +102,7 @@ NBT（移植自 NBTExplorer）
 
 ### 工具箱 · 版本对照表
 
-97 条 `pack_format` 记录，可输入版本号或格式号实时过滤。
+48 个 `pack_format` 记录（同一格式的多个版本归并成一行），可输入版本号或格式号实时过滤。
 
 ### NBT · NBT 编辑器
 
@@ -288,7 +288,7 @@ release\使用说明.md
 
 ```
 src/
-├── Settings.cs        版本对照表（97 条 pack_format → 版本范围）
+├── Settings.cs        版本对照表（48 个 pack_format → 版本范围）
 ├── AppSettings.cs     本地设置（记住上次停留的子模块）
 ├── Json.cs            极简 JSON 解析与保序输出（不依赖第三方库）
 ├── ZipIo.cs           ZIP 读写 + 路径穿越防护
